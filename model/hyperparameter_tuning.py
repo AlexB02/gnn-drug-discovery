@@ -3,7 +3,7 @@ import wandb
 from deepchem.data import DiskDataset
 from aqsol_model import AqSolModel, Trainer, Validator
 from aqsol_dataset import AqSolDBDataset
-
+import subprocess
 import os
 
 print("Loading data")
@@ -15,10 +15,11 @@ print("Loaded data")
 
 
 print("Loading device")
-device = "cpu"
+device = torch.device("cpu")
 if torch.cuda.is_available():
     cuda = int(os.getenv('CUDA_VISIBLE_DEVICES'))
     print(f"CUDA available: {cuda}")
+    subprocess.call(f"cuda:{cuda}", shell=True)
     device = torch.device(f"cuda:{cuda}")
 else:
     print("CUDA not available")
