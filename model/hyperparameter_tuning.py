@@ -6,21 +6,26 @@ from aqsol_dataset import AqSolDBDataset
 
 import os
 
-
+print("Loading data")
 data_dir = "data/"
 train = DiskDataset(data_dir + "aqsoldb_train")  # .select(range(1))
 validation = DiskDataset(data_dir + "aqsoldb_valid")
 test = DiskDataset(data_dir + "aqsoldb_test")
+print("Loaded data")
 
 
+print("Loading device")
 device = "cpu"
 if torch.cuda.is_available():
     print(f"CUDA available: {os.getenv('CUDA_VISIBLE_DEVICES')}")
     # device = torch.device("cuda:0")
-print(f"Chosen device: {device}")
+else:
+    print("CUDA not available")
+print(f"Loaded device: {device}")
 
-
+print("Logging into wandb")
 wandb.login(key="f1c8bcb101a330b26b1259276de798892fbce6a0")
+print("Logged into wandb")
 
 
 train_dataset = AqSolDBDataset(train.make_pytorch_dataset())
