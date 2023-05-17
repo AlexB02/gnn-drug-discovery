@@ -4,6 +4,8 @@
 
 module load anaconda3/personal
 
+echo $CUDA_VISIBLE_DEVICES
+
 cd $HOME/gnn-drug-discovery/
 source activate gnndd
 python model/hyperparameter_tuning.py
