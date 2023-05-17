@@ -16,12 +16,15 @@ print("Loaded data")
 
 print("Loading device")
 device = torch.device("cpu")
+subprocess.call("echo Checking CUDA available", shell=True)
+
 if torch.cuda.is_available():
     cuda = int(os.getenv('CUDA_VISIBLE_DEVICES'))
     print(f"CUDA available: {cuda}")
-    subprocess.call(f"cuda:{cuda}", shell=True)
+    subprocess.call(f"echo cuda:{cuda}", shell=True)
     device = torch.device(f"cuda:{cuda}")
 else:
+    subprocess.call("echo CUDA not available", shell=True)
     print("CUDA not available")
 print(f"Loaded device: {device}")
 
