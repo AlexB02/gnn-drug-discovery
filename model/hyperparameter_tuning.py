@@ -17,8 +17,9 @@ print("Loaded data")
 print("Loading device")
 device = "cpu"
 if torch.cuda.is_available():
-    print(f"CUDA available: {os.getenv('CUDA_VISIBLE_DEVICES')}")
-    # device = torch.device("cuda:0")
+    cuda = int(os.getenv('CUDA_VISIBLE_DEVICES'))
+    print(f"CUDA available: {cuda}")
+    device = torch.device(f"cuda:{cuda}")
 else:
     print("CUDA not available")
 print(f"Loaded device: {device}")
