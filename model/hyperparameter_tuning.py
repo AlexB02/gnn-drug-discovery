@@ -1,13 +1,23 @@
+import torch
 import wandb
 from deepchem.data import DiskDataset
 from aqsol_model import AqSolModel, Trainer, Validator
 from aqsol_dataset import AqSolDBDataset
+
+import os
 
 
 data_dir = "data/"
 train = DiskDataset(data_dir + "aqsoldb_train")  # .select(range(1))
 validation = DiskDataset(data_dir + "aqsoldb_valid")
 test = DiskDataset(data_dir + "aqsoldb_test")
+
+
+device = "cpu"
+if torch.cuda.is_available():
+    print(f"CUDA available: {os.getenv('CUDA_VISIBLE_DEVICES')}")
+    # device = torch.device("cuda:0")
+print(f"Chosen device: {device}")
 
 
 wandb.login(key="f1c8bcb101a330b26b1259276de798892fbce6a0")
@@ -77,7 +87,7 @@ def tune_hyperparameters(config=None):
           weight_decay=config.weight_decay,
           dropout=config.dropout,
           n_conv_layers=config.n_conv_layers
-        )
+        ).to(device)
         trainer = Trainer(model, train_dataset, config.batch_size)
         trainer.run(
             config.num_epochs,
