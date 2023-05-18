@@ -6,7 +6,7 @@ from torch_geometric.loader import DataLoader
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from numpy import std, zeros, diff
 import numpy as np
-from wandb import log as wandb_log
+import wandb
 
 
 class AqSolModel(nn.Module):
@@ -65,14 +65,18 @@ class AqSolModel(nn.Module):
 
 class Validator:
 
-    def __init__(self, model, dataset):
+    def __init__(self, model, dataset, device):
         self.dataset = dataset
         self.model = model
+        self.device = device
 
     def validate(self, verbose=False) -> float:
         self.model.eval()
         for batch in DataLoader(self.dataset, batch_size=len(self.dataset)):
             graphs, labels = batch
+            graphs = graphs.to(self.device)
+            labels = labels.to(self.device)
+
             preds = self.model(graphs).detach().numpy().flatten()
             labels = labels.detach().numpy()
             if verbose:
@@ -89,10 +93,11 @@ class Validator:
 
 class Trainer:
 
-    def __init__(self, model, dataset, batch_size):
+    def __init__(self, model, dataset, batch_size, device):
         self.model = model
         self.dataset = dataset
         self.batch_size = batch_size
+        self.device = device
 
         self.mean_loss = 0
         self.run_epochs = 0
@@ -103,6 +108,9 @@ class Trainer:
         epoch_loss = 0
         for batch in DataLoader(self.dataset, batch_size=self.batch_size):
             graphs, labels = batch
+            graphs = graphs.to(self.device)
+            labels = labels.to(self.device)
+
             pred = self.model(graphs)
             actual = labels.reshape((len(labels), 1))
             loss = self.model.loss(pred, actual)
@@ -112,7 +120,14 @@ class Trainer:
         self.mean_loss += epoch_loss
         return epoch_loss
 
-    def run(self, num_epochs, validator, tuning=False, earlyStopping=False):
+    def run(
+        self,
+        num_epochs,
+        validator,
+        tuning=False,
+        earlyStopping=False,
+        wandb_run=None
+    ):
         epoch_loss = 0
         validation_losses = zeros(num_epochs)
         stds = zeros(num_epochs)
@@ -140,8 +155,9 @@ class Trainer:
                     break
         if tuning:
             validation = validator.validate()
-            wandb_log({
-                "loss": epoch_loss,
-                "mse": validation['mse'],
-                "std_diff": validation['std_diff']
-            })
+            with wandb_run:
+                wandb.log({
+                    "loss": epoch_loss,
+                    "mse": validation['mse'],
+                    "std_diff": validation['std_diff']
+                })

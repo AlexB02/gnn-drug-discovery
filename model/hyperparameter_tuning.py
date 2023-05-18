@@ -15,17 +15,17 @@ print("Loaded data")
 
 
 print("Loading device")
-device = torch.device("cpu")
 subprocess.call("echo Checking CUDA available", shell=True)
-
 if torch.cuda.is_available():
     cuda = int(os.getenv('CUDA_VISIBLE_DEVICES'))
     print(f"CUDA available: {cuda}")
-    subprocess.call(f"echo cuda:{cuda}", shell=True)
-    device = torch.device(f"cuda:{cuda}")
+    subprocess.call(f"echo {torch.cuda.device_count()}", shell=True)
+    subprocess.call(f"echo {torch.cuda.get_device_name()}", shell=True)
 else:
     subprocess.call("echo CUDA not available", shell=True)
     print("CUDA not available")
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Loaded device: {device}")
 
 print("Logging into wandb")
@@ -51,7 +51,7 @@ sweep_config = {
             "max": 512
         },
         "num_epochs": {
-            "min": 50,
+            "min": 10,
             "max": 1000
         },
         "batch_size": {
@@ -88,7 +88,7 @@ sweep_id = wandb.sweep(
 
 
 def tune_hyperparameters(config=None):
-    with wandb.init(config=config):
+    with wandb.init(config=config) as wandb_run:
         config = wandb.config
         model = AqSolModel(
           30,
@@ -98,11 +98,12 @@ def tune_hyperparameters(config=None):
           dropout=config.dropout,
           n_conv_layers=config.n_conv_layers
         ).to(device)
-        trainer = Trainer(model, train_dataset, config.batch_size)
+        trainer = Trainer(model, train_dataset, config.batch_size, device)
         trainer.run(
             config.num_epochs,
-            Validator(model, validation_dataset),
-            tuning=True)
+            Validator(model, validation_dataset, device),
+            tuning=True,
+            wandb_run=wandb_run)
 
 
 wandb_config = {
