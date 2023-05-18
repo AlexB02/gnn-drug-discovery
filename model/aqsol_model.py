@@ -75,9 +75,8 @@ class Validator:
         for batch in DataLoader(self.dataset, batch_size=len(self.dataset)):
             graphs, labels = batch
             graphs = graphs.to(self.device)
-            labels = labels.to(self.device)
 
-            preds = self.model(graphs).detach().numpy().flatten()
+            preds = self.model(graphs).detach().cpu().numpy().flatten()
             labels = labels.detach().numpy()
             if verbose:
                 print("Labels", labels, "Predictions", preds)
@@ -109,11 +108,12 @@ class Trainer:
         for batch in DataLoader(self.dataset, batch_size=self.batch_size):
             graphs, labels = batch
             graphs = graphs.to(self.device)
+
+            labels = labels.reshape((len(labels), 1))
             labels = labels.to(self.device)
 
             pred = self.model(graphs)
-            actual = labels.reshape((len(labels), 1))
-            loss = self.model.loss(pred, actual)
+            loss = self.model.loss(pred, labels)
             epoch_loss += loss.item()
             loss.backward()
             self.model.optimizer.step()
