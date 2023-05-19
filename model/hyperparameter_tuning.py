@@ -47,20 +47,19 @@ sweep_config = {
     },
     "parameters": {
         "hidden_channels": {
-            "min": 30,
+            "min": 128,
             "max": 512
         },
         "num_epochs": {
-            "min": 10,
-            "max": 1000
+            "min": 100,
+            "max": 800
         },
         "batch_size": {
-            "min": 32,
-            "max": 128
+            "values": [32, 64, 128]
         },
         "lr": {
             "min": 1e-6,
-            "max": 1e-3
+            "max": 1e-5
         },
         "weight_decay": {
             "min": float(0),
@@ -68,15 +67,13 @@ sweep_config = {
         },
         "dropout": {
             "min": float(0),
-            "max": float(1)
+            "max": 0.5
         },
         "n_conv_layers": {
-            "min": 3,
-            "max": 7
+            "values": [1, 2, 3, 4]
         },
         "n_lin_layers": {
-            "min": 3,
-            "max": 10
+            "values": [1, 2, 3, 4, 5, 6]
         }
     }
 }

@@ -140,6 +140,16 @@ class Trainer:
                 print(f"loss {i}: {epoch_loss}")
                 print(f"mse {i}: {validation_losses[i]}")
                 print(f"std {i}: {stds[i]}")
+            else:
+                with wandb_run:
+                    wandb.log({
+                        "loss": epoch_loss,
+                        "mse": validation['mse'],
+                        "std_diff": validation['std_diff'],
+                        "epoch": i + 1
+                    })
+
+            # Handle early stopping
             trace_back = 20
             if earlyStopping and i > trace_back:
                 validation_dec = np.all(
