@@ -43,7 +43,7 @@ sweep_config = {
     "method": "bayes",
     "metric": {
         "goal": "minimize",
-        "name": "mse"
+        "name": "std_diff"
     },
     "parameters": {
         "hidden_channels": {
@@ -51,15 +51,15 @@ sweep_config = {
             "max": 512
         },
         "num_epochs": {
-            "min": 100,
-            "max": 800
+            "min": 10,
+            "max": 200
         },
         "batch_size": {
-            "values": [32, 64, 128]
+            "values": [16, 32, 64, 128]
         },
         "lr": {
-            "min": 1e-6,
-            "max": 1e-5
+            "min": 1e-5,
+            "max": 1e-4
         },
         "weight_decay": {
             "min": float(0),
@@ -67,13 +67,15 @@ sweep_config = {
         },
         "dropout": {
             "min": float(0),
-            "max": 0.5
+            "max": 0.2
         },
         "n_conv_layers": {
-            "values": [1, 2, 3, 4]
+            "min": 1,
+            "max": 4
         },
         "n_lin_layers": {
-            "values": [1, 2, 3, 4, 5, 6]
+            "min": 1,
+            "max": 8
         }
     }
 }
@@ -85,22 +87,22 @@ sweep_id = wandb.sweep(
 
 
 def tune_hyperparameters(config=None):
-    with wandb.init(config=config) as wandb_run:
-        config = wandb.config
-        model = AqSolModel(
-          30,
-          config.hidden_channels,
-          lr=config.lr,
-          weight_decay=config.weight_decay,
-          dropout=config.dropout,
-          n_conv_layers=config.n_conv_layers
-        ).to(device)
-        trainer = Trainer(model, train_dataset, config.batch_size, device)
-        trainer.run(
-            config.num_epochs,
-            Validator(model, validation_dataset, device),
-            tuning=True,
-            wandb_run=wandb_run)
+    wandb_run = wandb.init(config=config)
+    config = wandb.config
+    model = AqSolModel(
+        30,
+        config.hidden_channels,
+        lr=config.lr,
+        weight_decay=config.weight_decay,
+        dropout=config.dropout,
+        n_conv_layers=config.n_conv_layers
+    ).to(device)
+    trainer = Trainer(model, train_dataset, config.batch_size, device)
+    trainer.run(
+        config.num_epochs,
+        Validator(model, validation_dataset, device),
+        tuning=True,
+        wandb_run=wandb_run)
 
 
 wandb_config = {
@@ -114,6 +116,7 @@ wandb.agent(
     project="SolubilityPredictor",
     count=30
 )
+wandb.finish()
 
 # model = AqSolModel(30, 240, 0.001, 0.000001, 0.05, 5, 7)
 # print(model)

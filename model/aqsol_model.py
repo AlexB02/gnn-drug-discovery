@@ -131,6 +131,9 @@ class Trainer:
         epoch_loss = 0
         validation_losses = zeros(num_epochs)
         stds = zeros(num_epochs)
+        if wandb_run is not None:
+            wandb.run = wandb_run
+
         for i in range(num_epochs):
             epoch_loss = self.train_one_epoch()
             validation = validator.validate()
@@ -141,13 +144,12 @@ class Trainer:
                 print(f"mse {i}: {validation_losses[i]}")
                 print(f"std {i}: {stds[i]}")
             else:
-                with wandb_run:
-                    wandb.log({
-                        "loss": epoch_loss,
-                        "mse": validation['mse'],
-                        "std_diff": validation['std_diff'],
-                        "epoch": i + 1
-                    })
+                wandb.log({
+                    "loss": epoch_loss,
+                    "mse": validation['mse'],
+                    "std_diff": validation['std_diff'],
+                    "epoch": i + 1
+                })
 
             # Handle early stopping
             trace_back = 20
@@ -165,9 +167,9 @@ class Trainer:
                     break
         if tuning:
             validation = validator.validate()
-            with wandb_run:
-                wandb.log({
-                    "loss": epoch_loss,
-                    "mse": validation['mse'],
-                    "std_diff": validation['std_diff']
-                })
+            print("Inside tuning", wandb.run, wandb_run)
+            wandb.log({
+                "loss": epoch_loss,
+                "mse": validation['mse'],
+                "std_diff": validation['std_diff']
+            })
