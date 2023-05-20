@@ -180,12 +180,12 @@ if __name__ == "__main__":
     wandb_run = wandb.init()
     model = AqSolModel(
         30,
-        465,
-        0.00000885,
-        0.000005167,
-        0.03646,
-        5,
-        13
+        hidden_channels=502,
+        lr=0.00001165,
+        weight_decay=0.000005622,
+        dropout=0.05579,
+        n_conv_layers=7,
+        n_linear_layers=12
     )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     train = AqSolDBDataset.from_deepchem("data/aqsoldb_train")
@@ -198,6 +198,11 @@ if __name__ == "__main__":
         device
     )
     validator = Validator(model, validation, device)
-    trainer.run(421, validator, tuning=True, wandb_run=wandb_run)
+    trainer.run(
+        num_epochs=469,
+        validator=validator,
+        tuning=True,
+        wandb_run=wandb_run
+    )
     test_validator = Validator(model, test, device)
     wandb.log(test_validator.validate())
