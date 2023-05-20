@@ -51,31 +51,31 @@ sweep_config = {
             "max": 512
         },
         "num_epochs": {
-            "min": 10,
-            "max": 200
+            "min": 100,
+            "max": 500
         },
         "batch_size": {
-            "values": [16, 32, 64, 128]
+            "values": [16, 32, 64]
         },
         "lr": {
-            "min": 1e-5,
+            "min": 1e-6,
             "max": 1e-4
         },
         "weight_decay": {
             "min": float(0),
-            "max": 1e-5
+            "max": 6e-6
         },
         "dropout": {
             "min": float(0),
-            "max": 0.2
+            "max": 0.1
         },
         "n_conv_layers": {
-            "min": 1,
-            "max": 4
+            "min": 2,
+            "max": 7
         },
         "n_lin_layers": {
-            "min": 1,
-            "max": 8
+            "min": 4,
+            "max": 14
         }
     }
 }
@@ -114,7 +114,7 @@ wandb.agent(
     sweep_id,
     function=tune_hyperparameters,
     project="SolubilityPredictor",
-    count=30
+    count=50
 )
 wandb.finish()
 
