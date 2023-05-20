@@ -169,7 +169,6 @@ class Trainer:
                     break
         if tuning:
             validation = validator.validate()
-            print("Inside tuning", wandb.run, wandb_run)
             wandb.log({
                 "loss": epoch_loss,
                 "mse": validation['mse'],
@@ -178,6 +177,7 @@ class Trainer:
 
 
 if __name__ == "__main__":
+    wandb_run = wandb.init()
     model = AqSolModel(
         30,
         465,
@@ -198,6 +198,6 @@ if __name__ == "__main__":
         device
     )
     validator = Validator(model, validation, device)
-    trainer.run(421, validator)
+    trainer.run(421, validator, tuning=True, wandb_run=wandb_run)
     test_validator = Validator(model, test, device)
-    print(test_validator.validate())
+    wandb.log(test_validator.validate())
