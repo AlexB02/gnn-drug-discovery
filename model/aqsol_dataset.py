@@ -1,5 +1,6 @@
 from torch_geometric.data import Dataset
 from deepchem.data.pytorch_datasets import _TorchDiskDataset
+from deepchem.data import DiskDataset
 
 
 class AqSolDBDataset(Dataset):
@@ -11,6 +12,11 @@ class AqSolDBDataset(Dataset):
         self.labels = [y for _, y, _, _ in deepchem_dataset]
         self.length = len(self.labels)
         self._indices = None
+
+    @staticmethod
+    def from_deepchem(location):
+        dataset = DiskDataset(location)
+        return AqSolDBDataset(dataset.make_pytorch_dataset())
 
     def __getitem__(self, i):
         graph = self.graph_list[i]
