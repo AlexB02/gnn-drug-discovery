@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.optim import Adam
@@ -7,6 +8,7 @@ from sklearn.metrics import mean_squared_error, mean_absolute_error
 from numpy import std, zeros, diff
 import numpy as np
 import wandb
+from aqsol_dataset import AqSolDBDataset
 
 
 class AqSolModel(nn.Module):
@@ -173,3 +175,29 @@ class Trainer:
                 "mse": validation['mse'],
                 "std_diff": validation['std_diff']
             })
+
+
+if __name__ == "__main__":
+    model = AqSolModel(
+        30,
+        465,
+        0.00000885,
+        0.000005167,
+        0.03646,
+        5,
+        13
+    )
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    train = AqSolDBDataset.from_deepchem("data/aqsoldb_train")
+    test = AqSolDBDataset.from_deepchem("data/aqsoldb_test")
+    validation = AqSolDBDataset.from_deepchem("data/aqsoldb_valid")
+    trainer = Trainer(
+        model,
+        train,
+        32,
+        device
+    )
+    validator = Validator(model, validation, device)
+    trainer.run(421, validator)
+    test_validator = Validator(model, test, device)
+    print(test_validator.validate())
