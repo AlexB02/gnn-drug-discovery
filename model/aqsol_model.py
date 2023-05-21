@@ -2,13 +2,17 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.optim import Adam
-from torch_geometric.nn import global_mean_pool, GCNConv
+from torch_geometric.nn import global_mean_pool, GATConv
 from torch_geometric.loader import DataLoader
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from numpy import std, zeros, diff
 import numpy as np
 import wandb
 from aqsol_dataset import AqSolDBDataset
+
+
+def calculate_wmse(mse, std_diff) -> float:
+    return mse * (std_diff ** 2)
 
 
 class AqSolModel(nn.Module):
@@ -24,10 +28,10 @@ class AqSolModel(nn.Module):
             ):
         super(AqSolModel, self).__init__()
 
-        self.conv = GCNConv(n_features, hidden_channels)
+        self.conv = GATConv(n_features, hidden_channels)
 
         self.conv_layers = nn.ModuleList([
-            GCNConv(
+            GATConv(
                 hidden_channels,
                 hidden_channels) for _ in range(n_conv_layers - 1)
         ])
@@ -51,12 +55,11 @@ class AqSolModel(nn.Module):
 
         mol_x = self.conv(mol_x, mol_edge_index)
         mol_x = mol_x.relu()
-        mol_x = F.dropout(mol_x, p=self.dropout, training=self.training)
 
         for conv_layer in self.conv_layers:
             mol_x = conv_layer(mol_x, mol_edge_index).relu()
-            mol_x = F.dropout(mol_x, p=self.dropout, training=self.training)
 
+        mol_x = F.dropout(mol_x, p=self.dropout, training=self.training)
         mol_x = global_mean_pool(mol_x, mol.batch)
 
         for lin_layer in self.lin_layers:
@@ -88,7 +91,8 @@ class Validator:
             return {
                 "mse": mse,
                 "std_diff": std_diff,
-                "mae": mae
+                "mae": mae,
+                "wmse": calculate_wmse(mse, std_diff)
             }
 
 
@@ -150,7 +154,10 @@ class Trainer:
                     "loss": epoch_loss,
                     "mse": validation['mse'],
                     "std_diff": validation['std_diff'],
-                    "epoch": i + 1
+                    "epoch": i + 1,
+                    "wmse": calculate_wmse(
+                        validation['mse'], validation['std_diff']
+                    )
                 })
 
             # Handle early stopping
@@ -172,19 +179,23 @@ class Trainer:
             wandb.log({
                 "loss": epoch_loss,
                 "mse": validation['mse'],
-                "std_diff": validation['std_diff']
+                "std_diff": validation['std_diff'],
+                "wmse": calculate_wmse(
+                    validation['mse'], validation['std_diff']
+                )
             })
 
 
 if __name__ == "__main__":
     config = {
-        "hidden_channels": 502,
-        "lr": 0.00001165,
-        "weight_decay": 0.000005622,
-        "dropout": 0.05579,
-        "n_conv_layers": 7,
-        "n_lin_layers": 12,
-        "num_epochs": 10
+        "batch_size": 16,
+        "dropout": 0.0391,
+        "hidden_channels": 205,
+        "lr": 0.00003143,
+        "weight_decay": 5.071e-7,
+        "n_conv_layers": 2,
+        "n_lin_layers": 3,
+        "num_epochs": 100
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
@@ -203,7 +214,7 @@ if __name__ == "__main__":
     trainer = Trainer(
         model,
         train,
-        32,
+        config["batch_size"],
         device
     )
     validator = Validator(model, validation, device)
