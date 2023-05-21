@@ -183,7 +183,8 @@ if __name__ == "__main__":
         "weight_decay": 0.000005622,
         "dropout": 0.05579,
         "n_conv_layers": 7,
-        "n_linear_layers": 12
+        "n_lin_layers": 12,
+        "num_epochs": 10
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
@@ -193,7 +194,7 @@ if __name__ == "__main__":
         weight_decay=config["weight_decay"],
         dropout=config["dropout"],
         n_conv_layers=config["n_conv_layers"],
-        n_linear_layers=config["n_linear_layers"]
+        n_linear_layers=config["n_lin_layers"]
     )
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     train = AqSolDBDataset.from_deepchem("data/aqsoldb_train")
@@ -207,7 +208,7 @@ if __name__ == "__main__":
     )
     validator = Validator(model, validation, device)
     trainer.run(
-        num_epochs=469,
+        num_epochs=config["num_epochs"],
         validator=validator,
         tuning=True,
         wandb_run=wandb_run
