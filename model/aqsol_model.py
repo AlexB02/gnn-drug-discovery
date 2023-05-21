@@ -184,7 +184,7 @@ if __name__ == "__main__":
         "weight_decay": 0.000005622,
         "dropout": 0.05579,
         "n_conv_layers": 7,
-        "n_linear_layers": 12
+        "n_lin_layers": 12,
         "num_epochs": 469,
         "batch_size": 32
     }
@@ -196,7 +196,7 @@ if __name__ == "__main__":
         weight_decay=config["weight_decay"],
         dropout=config["dropout"],
         n_conv_layers=config["n_conv_layers"],
-        n_linear_layers=config["n_linear_layers"]
+        n_linear_layers=config["n_lin_layers"]
     ).to(device)
     train = AqSolDBDataset.from_deepchem("data/aqsoldb_train")
     test = AqSolDBDataset.from_deepchem("data/aqsoldb_test")
