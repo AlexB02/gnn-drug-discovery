@@ -177,16 +177,26 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    wandb_run = wandb.init()
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    config = {
+        "hidden_channels": 502,
+        "lr": 0.00001165,
+        "weight_decay": 0.000005622,
+        "dropout": 0.05579,
+        "n_conv_layers": 7,
+        "n_linear_layers": 12
+        "num_epochs": 469,
+        "batch_size": 32
+    }
+    wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
         30,
-        hidden_channels=502,
-        lr=0.00001165,
-        weight_decay=0.000005622,
-        dropout=0.05579,
-        n_conv_layers=7,
-        n_linear_layers=12
+        hidden_channels=config["hidden_channels"],
+        lr=config["lr"],
+        weight_decay=config["weight_decay"],
+        dropout=config["dropout"],
+        n_conv_layers=config["n_conv_layers"],
+        n_linear_layers=config["n_linear_layers"]
     ).to(device)
     train = AqSolDBDataset.from_deepchem("data/aqsoldb_train")
     test = AqSolDBDataset.from_deepchem("data/aqsoldb_test")
@@ -194,12 +204,12 @@ if __name__ == "__main__":
     trainer = Trainer(
         model,
         train,
-        32,
+        config["batch_size"],
         device
-        )
+    )
     validator = Validator(model, validation, device)
     trainer.run(
-        num_epochs=469,
+        num_epochs=config["num_epochs"],
         validator=validator,
         tuning=True,
         wandb_run=wandb_run
