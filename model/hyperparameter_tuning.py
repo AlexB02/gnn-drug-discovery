@@ -43,11 +43,11 @@ sweep_config = {
     "method": "bayes",
     "metric": {
         "goal": "minimize",
-        "name": "std_diff"
+        "name": "wmse"
     },
     "parameters": {
         "hidden_channels": {
-            "min": 128,
+            "min": 30,
             "max": 512
         },
         "num_epochs": {
@@ -114,7 +114,7 @@ wandb.agent(
     sweep_id,
     function=tune_hyperparameters,
     project="SolubilityPredictor",
-    count=50
+    count=30
 )
 wandb.finish()
 
