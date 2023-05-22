@@ -73,8 +73,12 @@ sweep_config = {
             "min": 1,
             "max": 4
         },
-        "pooling": ["mean", "add"],
-        "architecture": ["GAT", "GCN"]
+        "pooling": {
+            "values": ["mean", "add"]
+        },
+        "architecture": {
+            "values": ["GAT", "GCN"]
+        }
     }
 }
 
