@@ -50,15 +50,11 @@ sweep_config = {
             "min": 30,
             "max": 512
         },
-        "num_epochs": {
-            "min": 10,
-            "max": 500
-        },
         "batch_size": {
-            "values": [8, 16, 32, 64, 128]
+            "values": [16, 32, 64]
         },
         "lr": {
-            "min": 1e-5,
+            "min": 1e-6,
             "max": 1e-4
         },
         "weight_decay": {
@@ -67,7 +63,7 @@ sweep_config = {
         },
         "dropout": {
             "min": float(0),
-            "max": 0.2
+            "max": 0.1
         },
         "n_conv_layers": {
             "min": 1,
@@ -75,7 +71,7 @@ sweep_config = {
         },
         "n_lin_layers": {
             "min": 1,
-            "max": 8
+            "max": 4
         },
         "pooling": ["mean", "add"],
         "architecture": ["GAT", "GCN"]
@@ -103,7 +99,6 @@ def tune_hyperparameters(config=None):
     ).to(device)
     trainer = Trainer(model, train_dataset, config.batch_size, device)
     trainer.run(
-        config.num_epochs,
         Validator(model, validation_dataset, device),
         tuning=True,
         wandb_run=wandb_run,

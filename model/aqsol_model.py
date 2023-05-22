@@ -144,10 +144,8 @@ class Trainer:
 
     def run(
         self,
-        num_epochs,
         validator,
         tuning=False,
-        earlyStopping=False,
         wandb_run=None
     ):
         epoch_loss = 0
@@ -189,6 +187,7 @@ class Trainer:
 
 
 if __name__ == "__main__":
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
         "batch_size": 16,
         "dropout": 0.0391,
@@ -210,8 +209,7 @@ if __name__ == "__main__":
         dropout=config["dropout"],
         n_conv_layers=config["n_conv_layers"],
         n_linear_layers=config["n_lin_layers"]
-    )
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    ).to(device)
     train = AqSolDBDataset.from_deepchem("data/aqsoldb_train")
     test = AqSolDBDataset.from_deepchem("data/aqsoldb_test")
     validation = AqSolDBDataset.from_deepchem("data/aqsoldb_valid")
