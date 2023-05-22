@@ -2,7 +2,7 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.optim import Adam
-from torch_geometric.nn import GATv2Conv, global_add_pool, global_mean_pool, GCNConv
+from torch_geometric.nn import GATv2Conv, global_add_pool, global_mean_pool, GCNConv, EdgeConv
 from torch_geometric.loader import DataLoader
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from numpy import std
@@ -43,9 +43,15 @@ class AqSolModel(nn.Module):
                 hidden_channels) for _ in range(n_conv_layers - 1)
         ])
 
+        self.edge_layer = EdgeConv(nn=nn.Sequential(
+            nn.Linear(n_features*2, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256)
+        ))
+
         self.lin_layers = nn.ModuleList([
             nn.Linear(
-                hidden_channels // i,
+                (hidden_channels + 256 if i == 1 else hidden_channels) // i,
                 hidden_channels // (i + 1)) for i in range(1, n_linear_layers)
         ])
         self.out = nn.Linear(hidden_channels // n_linear_layers, 1)
@@ -64,13 +70,19 @@ class AqSolModel(nn.Module):
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
-        mol_x = self.conv(mol_x, mol_edge_index)
-        mol_x = mol_x.relu()
-        mol_x = F.dropout(mol_x, p=self.dropout, training=self.training)
+        # Handle conv model
+        cmol_x = self.conv(mol_x, mol_edge_index)
+        cmol_x = cmol_x.relu()
+        cmol_x = F.dropout(cmol_x, p=self.dropout, training=self.training)
 
         for conv_layer in self.conv_layers:
-            mol_x = conv_layer(mol_x, mol_edge_index).relu()
-            mol_x = F.dropout(mol_x, p=self.dropout, training=self.training)
+            cmol_x = conv_layer(cmol_x, mol_edge_index).relu()
+            cmol_x = F.dropout(cmol_x, p=self.dropout, training=self.training)
+
+        # Handle edge model
+        emol_x = self.edge_layer(mol_x, mol_edge_index)
+
+        mol_x = torch.cat([cmol_x, emol_x], 1)
 
         mol_x = self.pooling(mol_x, mol.batch)
 
@@ -146,7 +158,8 @@ class Trainer:
         self,
         validator,
         tuning=False,
-        wandb_run=None
+        wandb_run=None,
+        patience=20
     ):
         epoch_loss = 0
         lowest_mse = float("inf")
@@ -155,7 +168,7 @@ class Trainer:
         if wandb_run is not None:
             wandb.run = wandb_run
 
-        while not_improved_counter < 20:
+        while not_improved_counter < patience:
             epoch_counter += 1
             epoch_loss = self.train_one_epoch()
             validation = validator.validate()
@@ -197,7 +210,7 @@ if __name__ == "__main__":
         "n_conv_layers": 1,
         "n_lin_layers": 3,
         "num_epochs": 100,
-        "architecture": "GATv2 SAG",
+        "architecture": "GATv2",
         "dataset": "min-max-scale"
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
@@ -221,10 +234,10 @@ if __name__ == "__main__":
     )
     validator = Validator(model, validation, device)
     trainer.run(
-        num_epochs=config["num_epochs"],
         validator=validator,
         tuning=True,
-        wandb_run=wandb_run
+        wandb_run=wandb_run,
+        patience=config["patience"]
     )
     test_validator = Validator(model, test, device)
     wandb.log(test_validator.validate())

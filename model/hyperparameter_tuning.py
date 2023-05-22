@@ -39,16 +39,15 @@ test_dataset = AqSolDBDataset(test.make_pytorch_dataset())
 
 
 sweep_config = {
-    "name": "sweep",
+    "name": "ECN2",
     "method": "bayes",
     "metric": {
         "goal": "minimize",
-        "name": "wmse"
+        "name": "mse"
     },
     "parameters": {
         "hidden_channels": {
-            "min": 30,
-            "max": 512
+            "values": [x * 30 for x in range(1, 11)]
         },
         "batch_size": {
             "values": [16, 32, 64]
@@ -63,21 +62,23 @@ sweep_config = {
         },
         "dropout": {
             "min": float(0),
-            "max": 0.1
+            "max": float(1)
         },
         "n_conv_layers": {
-            "min": 1,
-            "max": 4
+            "values": [2, 3, 4, 5]
         },
         "n_lin_layers": {
-            "min": 1,
-            "max": 4
+            "values": [1, 2, 3, 4, 5]
         },
         "pooling": {
             "values": ["mean", "add"]
         },
         "architecture": {
             "values": ["GAT", "GCN"]
+        },
+        "patience": {
+            "min": 10,
+            "max": 100
         }
     }
 }
@@ -106,7 +107,7 @@ def tune_hyperparameters(config=None):
         Validator(model, validation_dataset, device),
         tuning=True,
         wandb_run=wandb_run,
-        earlyStopping=True
+        patience=config.patience
     )
 
 
