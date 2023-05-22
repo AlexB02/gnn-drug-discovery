@@ -76,7 +76,9 @@ sweep_config = {
         "n_lin_layers": {
             "min": 1,
             "max": 8
-        }
+        },
+        "pooling": ["mean", "add"],
+        "architecture": ["GAT", "GCN"]
     }
 }
 
@@ -95,14 +97,18 @@ def tune_hyperparameters(config=None):
         lr=config.lr,
         weight_decay=config.weight_decay,
         dropout=config.dropout,
-        n_conv_layers=config.n_conv_layers
+        n_conv_layers=config.n_conv_layers,
+        pooling=config.pooling,
+        architecture=config.architecture
     ).to(device)
     trainer = Trainer(model, train_dataset, config.batch_size, device)
     trainer.run(
         config.num_epochs,
         Validator(model, validation_dataset, device),
         tuning=True,
-        wandb_run=wandb_run)
+        wandb_run=wandb_run,
+        earlyStopping=True
+    )
 
 
 wandb_config = {
@@ -114,7 +120,7 @@ wandb.agent(
     sweep_id,
     function=tune_hyperparameters,
     project="SolubilityPredictor",
-    count=2
+    count=30
 )
 wandb.finish()
 

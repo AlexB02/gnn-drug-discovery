@@ -2,13 +2,13 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.optim import Adam
-from torch_geometric.nn import global_mean_pool, GATConv
+from torch_geometric.nn import GATv2Conv, global_add_pool, global_mean_pool, GCNConv
 from torch_geometric.loader import DataLoader
 from sklearn.metrics import mean_squared_error, mean_absolute_error
-from numpy import std, zeros, diff
-import numpy as np
+from numpy import std
 import wandb
 from aqsol_dataset import AqSolDBDataset
+import pickle
 
 
 def calculate_wmse(mse, std_diff) -> float:
@@ -24,14 +24,21 @@ class AqSolModel(nn.Module):
             weight_decay=10**-2.5,
             dropout=0.2,
             n_conv_layers=3,
-            n_linear_layers=2
+            n_linear_layers=2,
+            pooling="mean",
+            architecture="GAT"
             ):
         super(AqSolModel, self).__init__()
 
-        self.conv = GATConv(n_features, hidden_channels)
+        self.arch = {
+            "GAT": GATv2Conv,
+            "GCN": GCNConv
+        }[architecture]
+
+        self.conv = self.arch(n_features, hidden_channels)
 
         self.conv_layers = nn.ModuleList([
-            GATConv(
+            self.arch(
                 hidden_channels,
                 hidden_channels) for _ in range(n_conv_layers - 1)
         ])
@@ -49,23 +56,32 @@ class AqSolModel(nn.Module):
             lr=lr,
             weight_decay=weight_decay)
         self.dropout = dropout
+        self.pooling = {
+            "mean": global_mean_pool,
+            "add": global_add_pool
+        }[pooling]
 
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
         mol_x = self.conv(mol_x, mol_edge_index)
         mol_x = mol_x.relu()
+        mol_x = F.dropout(mol_x, p=self.dropout, training=self.training)
 
         for conv_layer in self.conv_layers:
             mol_x = conv_layer(mol_x, mol_edge_index).relu()
+            mol_x = F.dropout(mol_x, p=self.dropout, training=self.training)
 
-        mol_x = F.dropout(mol_x, p=self.dropout, training=self.training)
-        mol_x = global_mean_pool(mol_x, mol.batch)
+        mol_x = self.pooling(mol_x, mol.batch)
 
         for lin_layer in self.lin_layers:
             mol_x = lin_layer(mol_x).relu()
 
         return self.out(mol_x)
+
+    def predict(self, mol, min=-13.1719, max=2.1376816201):
+        pred = self.forward(mol).detach().cpu().numpy().flatten()
+        return pred * (max - min) + min
 
 
 class Validator:
@@ -135,45 +151,31 @@ class Trainer:
         wandb_run=None
     ):
         epoch_loss = 0
-        validation_losses = zeros(num_epochs)
-        stds = zeros(num_epochs)
+        lowest_mse = float("inf")
+        epoch_counter = 0
+        not_improved_counter = 0
         if wandb_run is not None:
             wandb.run = wandb_run
 
-        for i in range(num_epochs):
+        while not_improved_counter < 20:
+            epoch_counter += 1
             epoch_loss = self.train_one_epoch()
             validation = validator.validate()
-            validation_losses[i] = validation['mse']
-            stds[i] = validation['std_diff']
-            if not tuning:
-                print(f"loss {i}: {epoch_loss}")
-                print(f"mse {i}: {validation_losses[i]}")
-                print(f"std {i}: {stds[i]}")
+            wandb.log({
+                "loss": epoch_loss,
+                "mse": validation['mse'],
+                "std_diff": validation['std_diff'],
+                "epoch": epoch_counter + 1,
+                "wmse": calculate_wmse(
+                    validation['mse'], validation['std_diff']
+                )
+            })
+            if validation["mse"] < lowest_mse:
+                lowest_mse = validation["mse"]
+                not_improved_counter = 0
             else:
-                wandb.log({
-                    "loss": epoch_loss,
-                    "mse": validation['mse'],
-                    "std_diff": validation['std_diff'],
-                    "epoch": i + 1,
-                    "wmse": calculate_wmse(
-                        validation['mse'], validation['std_diff']
-                    )
-                })
+                not_improved_counter += 1
 
-            # Handle early stopping
-            trace_back = 20
-            if earlyStopping and i > trace_back:
-                validation_dec = np.all(
-                    diff(
-                        validation_losses[max(0, (i + 1) - trace_back):i]
-                    ) <= 0)
-                stds_dec = np.all(
-                    diff(
-                        stds[max(0, (i + 1) - trace_back):i]
-                    ) <= 0)
-                if validation_dec and stds_dec:
-                    print("Stopping early")
-                    break
         if tuning:
             validation = validator.validate()
             wandb.log({
@@ -193,9 +195,11 @@ if __name__ == "__main__":
         "hidden_channels": 205,
         "lr": 0.00003143,
         "weight_decay": 5.071e-7,
-        "n_conv_layers": 2,
+        "n_conv_layers": 1,
         "n_lin_layers": 3,
-        "num_epochs": 100
+        "num_epochs": 100,
+        "architecture": "GATv2 SAG",
+        "dataset": "min-max-scale"
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
@@ -226,3 +230,5 @@ if __name__ == "__main__":
     )
     test_validator = Validator(model, test, device)
     wandb.log(test_validator.validate())
+    with open("model/trained_model", "wb") as f:
+        pickle.dump(model, f)

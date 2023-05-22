@@ -27,6 +27,9 @@ train = transformer.transform(train)
 validation = transformer.transform(validation)
 test = transformer.transform(test)
 
+with open("data/scale_data.log", "w") as f:
+    f.write(f"max: {transformer.y_max}\nmin: {transformer.y_min}")
+
 
 def remove_pos_kwarg(mol: GraphData) -> GraphData:
     del mol.kwargs['pos']
