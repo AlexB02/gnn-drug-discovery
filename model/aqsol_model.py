@@ -20,49 +20,34 @@ class AqSolModel(nn.Module):
     def __init__(
             self,
             n_features,
-            hidden_channels,
+            config,
             lr=10**-3,
             weight_decay=10**-2.5,
-            dropout=0.2,
-            n_conv_layers=3,
-            n_linear_layers=2,
             pooling="mean",
-            architecture="GAT"
             ):
         super(AqSolModel, self).__init__()
+        
+        self.config = config
 
         self.arch = {
             "GAT": GATv2Conv,
             "GCN": GCNConv
-        }[architecture]
+        }[config["architecture"]]
 
-        self.conv = self.arch(n_features, hidden_channels)
+        self.conv1 = self.arch(n_features, config["conv_hc_1"])
+        self.conv2 = self.arch(config["conv_hc_1"], config["conv_hc_2"])
+        self.conv3 = self.arch(config["conv_hc_2"], config["conv_hc_3"])
+        self.conv4 = self.arch(config["conv_hc_3"], config["conv_hc_4"])
 
-        self.conv_layers = nn.ModuleList([
-            self.arch(
-                hidden_channels,
-                hidden_channels) for _ in range(n_conv_layers - 1)
-        ])
-
-        # self.edge_layer = EdgeConv(nn=nn.Sequential(
-        #     nn.Linear(n_features*2, 256),
-        #     nn.ReLU(),
-        #     nn.Linear(256, 256)
-        # ))
-
-        self.lin_layers = nn.ModuleList([
-            nn.Linear(
-                hidden_channels // i,
-                hidden_channels // (i + 1)) for i in range(1, n_linear_layers)
-        ])
-        self.out = nn.Linear(hidden_channels // n_linear_layers, 1)
+        self.lin1 = nn.Linear(config["conv_hc_4"], config["lin_n_1"])
+        self.lin2 = nn.Linear(config["lin_n_1"], config["lin_n_2"])
+        self.lin3 = nn.Linear(config["lin_n_2"], 1)
 
         self.loss = nn.MSELoss()
         self.optimizer = Adam(
             self.parameters(),
             lr=lr,
             weight_decay=weight_decay)
-        self.dropout = dropout
         self.pooling = {
             "mean": global_mean_pool,
             "add": global_add_pool
@@ -72,25 +57,45 @@ class AqSolModel(nn.Module):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
         # Handle conv model
-        cmol_x = self.conv(mol_x, mol_edge_index)
-        cmol_x = cmol_x.relu()
-        cmol_x = F.dropout(cmol_x, p=self.dropout, training=self.training)
+        mol_x = self.conv1(mol_x, mol_edge_index).relu()
+        mol_x = F.dropout(
+            mol_x,
+            p=self.config["conv_do_1"],
+            training=self.training)
 
-        for conv_layer in self.conv_layers:
-            cmol_x = conv_layer(cmol_x, mol_edge_index).relu()
-            cmol_x = F.dropout(cmol_x, p=self.dropout, training=self.training)
+        mol_x = self.conv2(mol_x, mol_edge_index).relu()
+        mol_x = F.dropout(
+            mol_x,
+            p=self.config["conv_do_2"],
+            training=self.training)
 
-        # Handle edge model
-        # emol_x = self.edge_layer(mol_x, mol_edge_index)
+        mol_x = self.conv3(mol_x, mol_edge_index).relu()
+        mol_x = F.dropout(
+            mol_x,
+            p=self.config["conv_do_3"],
+            training=self.training)
 
-        # mol_x = torch.cat([cmol_x, emol_x], 1)
+        mol_x = self.conv4(mol_x, mol_edge_index).relu()
+        mol_x = F.dropout(
+            mol_x,
+            p=self.config["conv_do_4"],
+            training=self.training)
 
-        mol_x = self.pooling(cmol_x, mol.batch)
+        mol_x = self.pooling(mol_x, mol.batch)
 
-        for lin_layer in self.lin_layers:
-            mol_x = lin_layer(mol_x).relu()
+        mol_x = self.lin1(mol_x).relu()
+        mol_x = F.dropout(
+            mol_x,
+            p=self.config["lin_do_1"]
+        )
 
-        return self.out(mol_x)
+        mol_x = self.lin2(mol_x).relu()
+        mol_x = F.dropout(
+            mol_x,
+            p=self.config["lin_do_2"]
+        )
+
+        return self.lin3(mol_x)
 
     def predict(self, mol, min=-13.1719, max=2.1376816201):
         pred = self.forward(mol).detach().cpu().numpy().flatten()

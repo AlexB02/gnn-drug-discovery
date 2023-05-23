@@ -46,29 +46,57 @@ sweep_config = {
         "name": "mse"
     },
     "parameters": {
-        "hidden_channels": {
+        "conv_hc_1": {
             "values": [x * 30 for x in range(1, 11)]
+        },
+        "conv_hc_2": {
+            "values": [x * 30 for x in range(1, 11)]
+        },
+        "conv_hc_3": {
+            "values": [x * 30 for x in range(1, 11)]
+        },
+        "conv_hc_4": {
+            "values": [x * 30 for x in range(1, 11)]
+        },
+        "conv_do_1": {
+            "min": float(0),
+            "max": float(1)
+        },
+        "conv_do_2": {
+            "min": float(0),
+            "max": float(1)
+        },
+        "conv_do_3": {
+            "min": float(0),
+            "max": float(1)
+        },
+        "conv_do_4": {
+            "min": float(0),
+            "max": float(1)
+        },
+        "lin_n_1": {
+            "values": [x * 30 for x in range(1, 11)]
+        },
+        "lin_n_2": {
+            "values": [x * 30 for x in range(1, 11)]
+        },
+        "lin_do_1": {
+            "min": float(0),
+            "max": float(1)
+        },
+        "lin_do_2": {
+            "min": float(0),
+            "max": float(1)
         },
         "batch_size": {
             "values": [16, 32, 64]
         },
         "lr": {
-            "min": 1e-6,
-            "max": 1e-4
+            "values": [1e-3, 1e-2, 1e-1]
         },
         "weight_decay": {
             "min": float(0),
             "max": 1e-5
-        },
-        "dropout": {
-            "min": float(0),
-            "max": float(1)
-        },
-        "n_conv_layers": {
-            "values": [1, 2, 3]
-        },
-        "n_lin_layers": {
-            "values": [1, 2, 3, 4, 5]
         },
         "pooling": {
             "values": ["mean", "add"]
@@ -94,13 +122,10 @@ def tune_hyperparameters(config=None):
     config = wandb.config
     model = AqSolModel(
         30,
-        config.hidden_channels,
+        config,
         lr=config.lr,
         weight_decay=config.weight_decay,
-        dropout=config.dropout,
-        n_conv_layers=config.n_conv_layers,
-        pooling=config.pooling,
-        architecture=config.architecture
+        pooling=config.pooling
     ).to(device)
     trainer = Trainer(model, train_dataset, config.batch_size, device)
     trainer.run(
@@ -120,7 +145,7 @@ wandb.agent(
     sweep_id,
     function=tune_hyperparameters,
     project="SolubilityPredictor",
-    count=40
+    count=3
 )
 wandb.finish()
 
