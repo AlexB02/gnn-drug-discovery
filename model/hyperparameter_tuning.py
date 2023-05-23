@@ -65,7 +65,7 @@ sweep_config = {
             "max": float(1)
         },
         "n_conv_layers": {
-            "values": [2, 3, 4, 5]
+            "values": [1, 2, 3]
         },
         "n_lin_layers": {
             "values": [1, 2, 3, 4, 5]
@@ -120,7 +120,7 @@ wandb.agent(
     sweep_id,
     function=tune_hyperparameters,
     project="SolubilityPredictor",
-    count=30
+    count=40
 )
 wandb.finish()
 
