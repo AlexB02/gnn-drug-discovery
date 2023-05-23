@@ -17,6 +17,10 @@ aqsoldb = pd.DataFrame({
 train, test_and_validation = train_test_split(aqsoldb, test_size=0.2)
 validation, test = train_test_split(test_and_validation, test_size=0.5)
 
+train.to_csv("data/train.csv")
+validation.to_csv("data/validation.csv")
+test.to_csv("data/test.csv")
+
 train = NumpyDataset(train['SMILES'], y=train['logS'])
 validation = NumpyDataset(validation['SMILES'], y=validation['logS'])
 test = NumpyDataset(test['SMILES'], y=test['logS'])
@@ -28,7 +32,7 @@ validation = transformer.transform(validation)
 test = transformer.transform(test)
 
 with open("data/scale_data.log", "w") as f:
-    f.write(f"max: {transformer.y_max}\nmin: {transformer.y_min}")
+    f.write(f"{transformer.y_max},{transformer.y_min}")
 
 
 def remove_pos_kwarg(mol: GraphData) -> GraphData:

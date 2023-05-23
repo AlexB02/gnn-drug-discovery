@@ -208,28 +208,35 @@ class Trainer:
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
-        "batch_size": 16,
-        "dropout": 0.0391,
-        "hidden_channels": 205,
-        "lr": 0.00003143,
-        "weight_decay": 5.071e-7,
-        "n_conv_layers": 1,
-        "n_lin_layers": 3,
-        "num_epochs": 100,
-        "architecture": "GATv2",
-        "dataset": "min-max-scale"
+        "batch_size": 32,
+        "lr": 0.000001,
+        "weight_decay": 0.00000182366906032867,
+        "architecture": "GAT",
+        "dataset": "min-max-scale",
+        "pooling": "mean",
+        "patience": 69,
+        "conv_hc_1": 30,
+        "conv_hc_2": 300,
+        "conv_hc_3": 210,
+        "conv_hc_4": 270,
+        "conv_do_1": 0.02624513997586908,
+        "conv_do_2": 0.3518271559744446,
+        "conv_do_3": 0.75788218327396,
+        "conv_do_4": 0.30115301272947137,
+        "lin_n_1": 30,
+        "lin_n_2": 270,
+        "lin_do_1": 0.9070104584027368,
+        "lin_do_2": 0.8803097834067043
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
         30,
-        hidden_channels=config["hidden_channels"],
+        config,
         lr=config["lr"],
         weight_decay=config["weight_decay"],
-        dropout=config["dropout"],
-        n_conv_layers=config["n_conv_layers"],
-        n_linear_layers=config["n_lin_layers"]
+        pooling=config["pooling"]
     ).to(device)
-    train = AqSolDBDataset.from_deepchem("data/aqsoldb_train")
+    train = AqSolDBDataset.from_deepchem("data/aqsoldb_temp")
     test = AqSolDBDataset.from_deepchem("data/aqsoldb_test")
     validation = AqSolDBDataset.from_deepchem("data/aqsoldb_valid")
     trainer = Trainer(
@@ -247,5 +254,5 @@ if __name__ == "__main__":
     )
     test_validator = Validator(model, test, device)
     wandb.log(test_validator.validate())
-    with open("model/trained_model", "wb") as f:
+    with open("model/temp_model", "wb") as f:
         pickle.dump(model, f)
