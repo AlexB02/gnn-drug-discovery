@@ -2,7 +2,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 from torch.optim import Adam
-from torch_geometric.nn import GATv2Conv, global_add_pool, global_mean_pool, GCNConv, EdgeConv
+from torch_geometric.nn import (
+    GATv2Conv, global_add_pool, global_mean_pool, GCNConv)
 from torch_geometric.loader import DataLoader
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from numpy import std
@@ -43,15 +44,15 @@ class AqSolModel(nn.Module):
                 hidden_channels) for _ in range(n_conv_layers - 1)
         ])
 
-        self.edge_layer = EdgeConv(nn=nn.Sequential(
-            nn.Linear(n_features*2, 256),
-            nn.ReLU(),
-            nn.Linear(256, 256)
-        ))
+        # self.edge_layer = EdgeConv(nn=nn.Sequential(
+        #     nn.Linear(n_features*2, 256),
+        #     nn.ReLU(),
+        #     nn.Linear(256, 256)
+        # ))
 
         self.lin_layers = nn.ModuleList([
             nn.Linear(
-                (hidden_channels + 256 if i == 1 else hidden_channels) // i,
+                hidden_channels // i,
                 hidden_channels // (i + 1)) for i in range(1, n_linear_layers)
         ])
         self.out = nn.Linear(hidden_channels // n_linear_layers, 1)
@@ -80,11 +81,11 @@ class AqSolModel(nn.Module):
             cmol_x = F.dropout(cmol_x, p=self.dropout, training=self.training)
 
         # Handle edge model
-        emol_x = self.edge_layer(mol_x, mol_edge_index)
+        # emol_x = self.edge_layer(mol_x, mol_edge_index)
 
-        mol_x = torch.cat([cmol_x, emol_x], 1)
+        # mol_x = torch.cat([cmol_x, emol_x], 1)
 
-        mol_x = self.pooling(mol_x, mol.batch)
+        mol_x = self.pooling(cmol_x, mol.batch)
 
         for lin_layer in self.lin_layers:
             mol_x = lin_layer(mol_x).relu()
