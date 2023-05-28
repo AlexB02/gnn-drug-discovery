@@ -3,9 +3,11 @@ from torch import nn
 import torch.nn.functional as F
 from torch.optim import Adam
 from torch_geometric.nn import (
-    GATv2Conv, global_add_pool, global_mean_pool, GCNConv)
+    global_add_pool, global_mean_pool, GCNConv, GATConv)
 from torch_geometric.loader import DataLoader
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import (
+    mean_squared_error, mean_absolute_error, explained_variance_score
+)
 from numpy import std
 import wandb
 from aqsol_dataset import AqSolDBDataset
@@ -26,11 +28,11 @@ class AqSolModel(nn.Module):
             pooling="mean",
             ):
         super(AqSolModel, self).__init__()
-        
+
         self.config = config
 
         self.arch = {
-            "GAT": GATv2Conv,
+            "GAT": GATConv,
             "GCN": GCNConv
         }[config["architecture"]]
 
@@ -39,9 +41,7 @@ class AqSolModel(nn.Module):
         self.conv3 = self.arch(config["conv_hc_2"], config["conv_hc_3"])
         self.conv4 = self.arch(config["conv_hc_3"], config["conv_hc_4"])
 
-        self.lin1 = nn.Linear(config["conv_hc_4"], config["lin_n_1"])
-        self.lin2 = nn.Linear(config["lin_n_1"], config["lin_n_2"])
-        self.lin3 = nn.Linear(config["lin_n_2"], 1)
+        self.lin1 = nn.Linear(config["conv_hc_4"], 1)
 
         self.loss = nn.MSELoss()
         self.optimizer = Adam(
@@ -75,29 +75,56 @@ class AqSolModel(nn.Module):
             p=self.config["conv_do_3"],
             training=self.training)
 
-        mol_x = self.conv4(mol_x, mol_edge_index).relu()
-        mol_x = F.dropout(
-            mol_x,
-            p=self.config["conv_do_4"],
-            training=self.training)
+        mol_x = self.conv4(mol_x, mol_edge_index)
 
         mol_x = self.pooling(mol_x, mol.batch)
 
-        mol_x = self.lin1(mol_x).relu()
-        mol_x = F.dropout(
-            mol_x,
-            p=self.config["lin_do_1"]
-        )
+        mol_x = self.lin1(mol_x)
 
-        mol_x = self.lin2(mol_x).relu()
-        mol_x = F.dropout(
-            mol_x,
-            p=self.config["lin_do_2"]
-        )
-
-        return self.lin3(mol_x)
+        return mol_x
 
     def predict(self, mol, min=-13.1719, max=2.1376816201):
+        pred = self.forward(mol).detach().cpu().numpy().flatten()
+        return pred * (max - min) + min
+
+
+class DSM(nn.Module):
+
+    def __init__(self):
+        super(DSM, self).__init__()
+        self.gcn1 = GCNConv(30, 128)
+        self.gcn2 = GCNConv(128, 128 // 2)
+        self.gcn3 = GCNConv(128 // 2, 128 // 4)
+
+        self.fc1 = nn.Linear(128 // 4, 1)
+
+        self.loss = nn.MSELoss()
+        self.optimizer = Adam(
+            self.parameters(),
+            lr=1e-5,
+            weight_decay=0.00000182366906032867)
+
+    def forward(self, mol):
+        mol_x, mol_edge_index = mol.x, mol.edge_index
+        mol_x = self.gcn1(mol_x, mol_edge_index).relu()
+        mol_x = F.dropout(
+            mol_x,
+            p=0.2
+        )
+        mol_x = self.gcn2(mol_x, mol_edge_index).relu()
+        mol_x = F.dropout(
+            mol_x,
+            p=0.2
+        )
+        mol_x = self.gcn3(mol_x, mol_edge_index)
+        add = global_add_pool(mol_x, mol.batch)
+        mol_x = torch.cat([add], dim=1)
+        mol_x = self.fc1(mol_x)
+
+        return mol_x
+
+    def predict(self, mol, min=-13.1719, max=2.1376816201):
+        self.eval()
         pred = self.forward(mol).detach().cpu().numpy().flatten()
         return pred * (max - min) + min
 
@@ -119,10 +146,12 @@ class Validator:
             labels = labels.detach().numpy()
             if verbose:
                 print("Labels", labels, "Predictions", preds)
+            evs = explained_variance_score(labels, preds)
             mse = mean_squared_error(labels, preds)
             mae = mean_absolute_error(labels, preds)
             std_diff = std(labels) - std(preds)
             return {
+                "evs": evs,
                 "mse": mse,
                 "std_diff": std_diff,
                 "mae": mae,
@@ -179,8 +208,10 @@ class Trainer:
             epoch_loss = self.train_one_epoch()
             validation = validator.validate()
             wandb.log({
+                "evs": validation['evs'],
                 "loss": epoch_loss,
                 "mse": validation['mse'],
+                "mae": validation['mae'],
                 "std_diff": validation['std_diff'],
                 "epoch": epoch_counter + 1,
                 "wmse": calculate_wmse(
@@ -196,8 +227,10 @@ class Trainer:
         if tuning:
             validation = validator.validate()
             wandb.log({
+                "evs": validation['evs'],
                 "loss": epoch_loss,
                 "mse": validation['mse'],
+                "mae": validation['mae'],
                 "std_diff": validation['std_diff'],
                 "wmse": calculate_wmse(
                     validation['mse'], validation['std_diff']
@@ -209,34 +242,41 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
         "batch_size": 32,
-        "lr": 0.000001,
-        "weight_decay": 0.00000182366906032867,
-        "architecture": "GAT",
-        "dataset": "min-max-scale",
-        "pooling": "mean",
-        "patience": 69,
-        "conv_hc_1": 30,
-        "conv_hc_2": 300,
-        "conv_hc_3": 210,
-        "conv_hc_4": 270,
-        "conv_do_1": 0.02624513997586908,
-        "conv_do_2": 0.3518271559744446,
-        "conv_do_3": 0.75788218327396,
-        "conv_do_4": 0.30115301272947137,
-        "lin_n_1": 30,
-        "lin_n_2": 270,
-        "lin_do_1": 0.9070104584027368,
-        "lin_do_2": 0.8803097834067043
+        # "lr": 0.000001,
+        # "weight_decay": 0.00000182366906032867,
+        # "architecture": "GAT",
+        # "dataset": "min-max-scale",
+        # "pooling": "mean",
+        "patience": 69
+        # "conv_hc_1": 30,
+        # "conv_hc_2": 300,
+        # "conv_hc_3": 210,
+        # "conv_hc_4": 270,
+        # "conv_do_1": 0.02624513997586908,
+        # "conv_do_2": 0.3518271559744446,
+        # "conv_do_3": 0.75788218327396,
+        # "conv_do_4": 0.30115301272947137,
+        # "lin_n_1": 30,
+        # "lin_n_2": 270,
+        # "lin_do_1": 0.9070104584027368,
+        # "lin_do_2": 0.8803097834067043
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
-    model = AqSolModel(
-        30,
-        config,
-        lr=config["lr"],
-        weight_decay=config["weight_decay"],
-        pooling=config["pooling"]
-    ).to(device)
-    train = AqSolDBDataset.from_deepchem("data/aqsoldb_temp")
+    # model = AqSolModel(
+    #     30,
+    #     config,
+    #     lr=config["lr"],
+    #     weight_decay=config["weight_decay"],
+    #     pooling=config["pooling"]
+    # ).to(device)
+    # global_model: AqSolModel
+    # with open("model/trained_model", "rb") as f:
+    #     global_model = pickle.load(f)
+    # global_model.train()
+    model = DSM()
+    # model = DSM(model=global_model)
+    # print(model)
+    train = AqSolDBDataset.from_deepchem("data/aqsoldb_train")
     test = AqSolDBDataset.from_deepchem("data/aqsoldb_test")
     validation = AqSolDBDataset.from_deepchem("data/aqsoldb_valid")
     trainer = Trainer(
@@ -254,5 +294,5 @@ if __name__ == "__main__":
     )
     test_validator = Validator(model, test, device)
     wandb.log(test_validator.validate())
-    with open("model/temp_model", "wb") as f:
+    with open("model/small_trained_model", "wb") as f:
         pickle.dump(model, f)

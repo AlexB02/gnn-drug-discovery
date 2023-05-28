@@ -39,24 +39,28 @@ test_dataset = AqSolDBDataset(test.make_pytorch_dataset())
 
 
 sweep_config = {
-    "name": "ECN2",
+    "name": "GAT",
     "method": "bayes",
     "metric": {
-        "goal": "minimize",
-        "name": "mse"
+        "goal": "maximise",
+        "name": "evs"
     },
     "parameters": {
         "conv_hc_1": {
-            "values": [x * 30 for x in range(1, 11)]
+            "min": 30,
+            "max": 600
         },
         "conv_hc_2": {
-            "values": [x * 30 for x in range(1, 11)]
+            "min": 30,
+            "max": 600
         },
         "conv_hc_3": {
-            "values": [x * 30 for x in range(1, 11)]
+            "min": 30,
+            "max": 600
         },
         "conv_hc_4": {
-            "values": [x * 30 for x in range(1, 11)]
+            "min": 30,
+            "max": 600
         },
         "conv_do_1": {
             "min": float(0),
@@ -70,33 +74,16 @@ sweep_config = {
             "min": float(0),
             "max": float(1)
         },
-        "conv_do_4": {
-            "min": float(0),
-            "max": float(1)
-        },
-        "lin_n_1": {
-            "values": [x * 30 for x in range(1, 11)]
-        },
-        "lin_n_2": {
-            "values": [x * 30 for x in range(1, 11)]
-        },
-        "lin_do_1": {
-            "min": float(0),
-            "max": float(1)
-        },
-        "lin_do_2": {
-            "min": float(0),
-            "max": float(1)
-        },
         "batch_size": {
-            "values": [16, 32, 64]
+            "values": [16, 32, 64, 128]
         },
         "lr": {
-            "values": [1e-3, 1e-2, 1e-1]
+            "min": 1e-6,
+            "max": 1e-1
         },
         "weight_decay": {
             "min": float(0),
-            "max": 1e-5
+            "max": 1e-3
         },
         "pooling": {
             "values": ["mean", "add"]
@@ -105,8 +92,7 @@ sweep_config = {
             "values": ["GAT", "GCN"]
         },
         "patience": {
-            "min": 10,
-            "max": 100
+            "values": [10, 20, 30]
         }
     }
 }
@@ -145,7 +131,7 @@ wandb.agent(
     sweep_id,
     function=tune_hyperparameters,
     project="SolubilityPredictor",
-    count=3
+    count=30
 )
 wandb.finish()
 
