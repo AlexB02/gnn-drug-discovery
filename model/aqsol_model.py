@@ -233,12 +233,13 @@ class Trainer:
 
     def run_cross_validation(self, model_class, wandb_run, model_config,
                              model_kwargs, patience):
-        skf = KFold(n_splits=10, shuffle=True)
+        n_folds = 5
+        skf = KFold(n_splits=n_folds, shuffle=True)
         device = get_device()
-        mses = np.zeros(10)
-        maes = np.zeros(10)
-        std_diffs = np.zeros(10)
-        evss = np.zeros(10)
+        mses = np.zeros(n_folds)
+        maes = np.zeros(n_folds)
+        std_diffs = np.zeros(n_folds)
+        evss = np.zeros(n_folds)
         for fold, (train_index, val_index) in enumerate(
                 skf.split(range(len(self.dataset)))):
             print(f"Fold {fold}")
