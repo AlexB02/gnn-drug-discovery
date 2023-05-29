@@ -245,7 +245,7 @@ class Trainer:
             train_dataset = self.dataset.index_select(train_index)
             validation_dataset = self.dataset.index_select(val_index)
             print(type(validation_dataset))
-            fold_model = model_class(30, model_config, **model_kwargs)
+            fold_model = model_class(30, model_config, **model_kwargs).to(device)
             fold_validator = Validator(fold_model, validation_dataset, device)
             loss = self.run(
                 fold_validator,
