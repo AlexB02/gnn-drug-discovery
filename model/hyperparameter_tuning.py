@@ -1,7 +1,7 @@
 import torch
 import wandb
 from deepchem.data import DiskDataset
-from aqsol_model import AqSolModel, Trainer, Validator
+from aqsol_model import AqSolModel, Trainer
 from aqsol_dataset import AqSolDBDataset
 import subprocess
 import os
@@ -9,7 +9,7 @@ import os
 print("Loading data")
 data_dir = "data/"
 train = DiskDataset(data_dir + "aqsoldb_train")  # .select(range(1))
-validation = DiskDataset(data_dir + "aqsoldb_valid")
+# validation = DiskDataset(data_dir + "aqsoldb_valid")
 test = DiskDataset(data_dir + "aqsoldb_test")
 print("Loaded data")
 
@@ -34,7 +34,7 @@ print("Logged into wandb")
 
 
 train_dataset = AqSolDBDataset(train.make_pytorch_dataset())
-validation_dataset = AqSolDBDataset(validation.make_pytorch_dataset())
+# validation_dataset = AqSolDBDataset(validation.make_pytorch_dataset())
 test_dataset = AqSolDBDataset(test.make_pytorch_dataset())
 
 
@@ -42,7 +42,7 @@ sweep_config = {
     "name": "GAT",
     "method": "bayes",
     "metric": {
-        "goal": "maximise",
+        "goal": "maximize",
         "name": "evs"
     },
     "parameters": {
@@ -79,7 +79,7 @@ sweep_config = {
         },
         "lr": {
             "min": 1e-6,
-            "max": 1e-1
+            "max": 1e-4
         },
         "weight_decay": {
             "min": float(0),
@@ -113,11 +113,17 @@ def tune_hyperparameters(config=None):
         weight_decay=config.weight_decay,
         pooling=config.pooling
     ).to(device)
+    model_kwargs = {
+        "lr": config.lr,
+        "weight_decay": config.weight_decay,
+        "pooling": config.pooling
+    }
     trainer = Trainer(model, train_dataset, config.batch_size, device)
-    trainer.run(
-        Validator(model, validation_dataset, device),
-        tuning=True,
-        wandb_run=wandb_run,
+    trainer.run_cross_validation(
+        AqSolModel,
+        wandb_run,
+        model_config=config,
+        model_kwargs=model_kwargs,
         patience=config.patience
     )
 

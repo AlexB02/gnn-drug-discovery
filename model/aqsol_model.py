@@ -8,10 +8,13 @@ from torch_geometric.loader import DataLoader
 from sklearn.metrics import (
     mean_squared_error, mean_absolute_error, explained_variance_score
 )
+from sklearn.model_selection import KFold
 from numpy import std
 import wandb
 from aqsol_dataset import AqSolDBDataset
 import pickle
+from device import get_device
+import numpy as np
 
 
 def calculate_wmse(mse, std_diff) -> float:
@@ -170,72 +173,104 @@ class Trainer:
         self.mean_loss = 0
         self.run_epochs = 0
 
-    def train_one_epoch(self):
-        self.model.train()
-        self.model.optimizer.zero_grad()
+    def train_one_epoch(self, train_dataset, model):
+        model.train()
+        model.optimizer.zero_grad()
         epoch_loss = 0
-        for batch in DataLoader(self.dataset, batch_size=self.batch_size):
+        for batch in DataLoader(train_dataset, batch_size=self.batch_size):
             graphs, labels = batch
             graphs = graphs.to(self.device)
 
             labels = labels.reshape((len(labels), 1))
             labels = labels.to(self.device)
 
-            pred = self.model(graphs)
-            loss = self.model.loss(pred, labels)
+            pred = model(graphs)
+            loss = model.loss(pred, labels)
             epoch_loss += loss.item()
             loss.backward()
-            self.model.optimizer.step()
+            model.optimizer.step()
         self.mean_loss += epoch_loss
         return epoch_loss
 
     def run(
         self,
         validator,
-        tuning=False,
+        train_dataset,
+        model,
         wandb_run=None,
-        patience=20
+        patience=20,
+        log=True
     ):
-        epoch_loss = 0
         lowest_mse = float("inf")
         epoch_counter = 0
         not_improved_counter = 0
+        epoch_loss = 0
         if wandb_run is not None:
             wandb.run = wandb_run
 
         while not_improved_counter < patience:
             epoch_counter += 1
-            epoch_loss = self.train_one_epoch()
+            epoch_loss = self.train_one_epoch(train_dataset, model)
             validation = validator.validate()
+            if log:
+                wandb.log({"epoch": epoch_counter + 1}, commit=False)
             wandb.log({
                 "evs": validation['evs'],
                 "loss": epoch_loss,
                 "mse": validation['mse'],
                 "mae": validation['mae'],
                 "std_diff": validation['std_diff'],
-                "epoch": epoch_counter + 1,
                 "wmse": calculate_wmse(
                     validation['mse'], validation['std_diff']
                 )
-            })
+            }, commit=True)
             if validation["mse"] < lowest_mse:
                 lowest_mse = validation["mse"]
                 not_improved_counter = 0
             else:
                 not_improved_counter += 1
+        return epoch_loss
 
-        if tuning:
-            validation = validator.validate()
-            wandb.log({
-                "evs": validation['evs'],
-                "loss": epoch_loss,
-                "mse": validation['mse'],
-                "mae": validation['mae'],
-                "std_diff": validation['std_diff'],
-                "wmse": calculate_wmse(
-                    validation['mse'], validation['std_diff']
-                )
-            })
+    def run_cross_validation(self, model_class, wandb_run, model_config,
+                             model_kwargs, patience):
+        skf = KFold(n_splits=10, shuffle=True)
+        device = get_device()
+        mses = np.zeros(10)
+        maes = np.zeros(10)
+        std_diffs = np.zeros(10)
+        evss = np.zeros(10)
+        for fold, (train_index, val_index) in enumerate(
+                skf.split(range(len(self.dataset)))):
+            print(f"Fold {fold}")
+            train_dataset = self.dataset.index_select(train_index)
+            validation_dataset = self.dataset.index_select(val_index)
+            print(type(validation_dataset))
+            fold_model = model_class(30, model_config, **model_kwargs)
+            fold_validator = Validator(fold_model, validation_dataset, device)
+            loss = self.run(
+                fold_validator,
+                train_dataset,
+                fold_model,
+                wandb_run,
+                patience,
+                log=False
+            )
+            validation = fold_validator.validate()
+            mses[fold] = validation["mse"]
+            maes[fold] = validation["mae"]
+            std_diffs[fold] = validation["std_diff"]
+            evss[fold] = validation["evs"]
+        wandb.run = wandb_run
+        wandb.log({
+            "evs": evss.mean(),
+            "loss": loss,
+            "mse": mses.mean(),
+            "mae": maes.mean(),
+            "std_diff": std_diffs.mean(),
+            "wmse": calculate_wmse(
+                mses.mean(), std_diffs.mean()
+            )
+        })
 
 
 if __name__ == "__main__":
