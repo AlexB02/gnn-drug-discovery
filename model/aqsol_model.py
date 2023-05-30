@@ -8,6 +8,7 @@ from torch_geometric.loader import DataLoader
 from sklearn.metrics import (
     mean_squared_error, mean_absolute_error, explained_variance_score
 )
+from torch_geometric.nn import MessagePassing
 from sklearn.model_selection import KFold
 from numpy import std
 import wandb
@@ -15,10 +16,45 @@ from aqsol_dataset import AqSolDBDataset
 import pickle
 from device import get_device
 import numpy as np
+from torch_geometric.utils import add_self_loops
 
 
 def calculate_wmse(mse, std_diff) -> float:
     return mse * (std_diff ** 2)
+
+
+class SumConv(MessagePassing):
+
+    def __init__(self, in_channels, out_channels):
+        super(SumConv, self).__init__(aggr='add')
+        hidden = (out_channels + in_channels) // 2
+
+        self.lin1 = nn.Linear(in_channels, hidden)
+        self.lin2 = nn.Linear(hidden, out_channels)
+
+        self.in_norm = nn.BatchNorm1d(in_channels)
+        self.out_norm = nn.BatchNorm1d(out_channels)
+
+    # Messages received from adjacent nodes
+    def message(self, x_j):
+        return x_j
+
+    # Aggregated
+
+    # New tensor for this node
+    def update(self, aggr_out):
+        aggr_out = F.dropout(aggr_out, training=self.training)
+        aggr_out = self.lin1(aggr_out).relu()
+        aggr_out = F.dropout(aggr_out, training=self.training)
+        aggr_out = self.lin2(aggr_out)
+        return aggr_out
+
+    def forward(self, x, edge_index):
+        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
+        x = self.in_norm(x)
+        x = self.propagate(edge_index, x=x)
+        x = self.out_norm(x)
+        return x
 
 
 class AqSolModel(nn.Module):
@@ -36,15 +72,28 @@ class AqSolModel(nn.Module):
 
         self.arch = {
             "GAT": GATConv,
-            "GCN": GCNConv
+            "GCN": GCNConv,
+            "SUM": SumConv
         }[config["architecture"]]
 
-        self.conv1 = self.arch(n_features, config["conv_hc_1"])
-        self.conv2 = self.arch(config["conv_hc_1"], config["conv_hc_2"])
-        self.conv3 = self.arch(config["conv_hc_2"], config["conv_hc_3"])
-        self.conv4 = self.arch(config["conv_hc_3"], config["conv_hc_4"])
+        hidden_channels = config["hidden_channels"]
+        hidden_layers = config["hidden_layers"]
 
-        self.lin1 = nn.Linear(config["conv_hc_4"], 1)
+        dropout_p = config["dropout"]
+        self.dropout = nn.Dropout(p=dropout_p)
+
+        self.conv1 = self.arch(n_features, hidden_channels)
+        self.conv_layers = nn.ModuleList([
+            self.arch(hidden_channels,
+                      hidden_channels) for _ in range(hidden_layers)
+        ])
+
+        linear_layers = config["linear_layers"]
+        self.lin_layers = nn.ModuleList([
+            nn.Linear(hidden_channels,
+                      hidden_channels) for _ in range(linear_layers)
+        ])
+        self.lin = nn.Linear(hidden_channels, 1)
 
         self.loss = nn.MSELoss()
         self.optimizer = Adam(
@@ -59,30 +108,22 @@ class AqSolModel(nn.Module):
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
-        # Handle conv model
+        # # Handle conv model
+        mol_x = self.dropout(mol_x)
         mol_x = self.conv1(mol_x, mol_edge_index).relu()
-        mol_x = F.dropout(
-            mol_x,
-            p=self.config["conv_do_1"],
-            training=self.training)
 
-        mol_x = self.conv2(mol_x, mol_edge_index).relu()
-        mol_x = F.dropout(
-            mol_x,
-            p=self.config["conv_do_2"],
-            training=self.training)
-
-        mol_x = self.conv3(mol_x, mol_edge_index).relu()
-        mol_x = F.dropout(
-            mol_x,
-            p=self.config["conv_do_3"],
-            training=self.training)
-
-        mol_x = self.conv4(mol_x, mol_edge_index)
+        for conv_layer in self.conv_layers:
+            mol_x = self.dropout(mol_x)
+            mol_x = conv_layer(mol_x, mol_edge_index).relu()
 
         mol_x = self.pooling(mol_x, mol.batch)
 
-        mol_x = self.lin1(mol_x)
+        for lin_layer in self.lin_layers:
+            mol_x = F.dropout(mol_x, training=self.training)
+            mol_x = lin_layer(mol_x).relu()
+
+        mol_x = F.dropout(mol_x, training=self.training)
+        mol_x = self.lin(mol_x)
 
         return mol_x
 
@@ -208,7 +249,7 @@ class Trainer:
         if wandb_run is not None:
             wandb.run = wandb_run
 
-        while not_improved_counter < patience:
+        while not_improved_counter < patience and epoch_counter <= 1000:
             epoch_counter += 1
             epoch_loss = self.train_one_epoch(train_dataset, model)
             validation = validator.validate()
@@ -297,34 +338,32 @@ if __name__ == "__main__":
         # "lin_do_2": 0.8803097834067043
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
-    # model = AqSolModel(
-    #     30,
-    #     config,
-    #     lr=config["lr"],
-    #     weight_decay=config["weight_decay"],
-    #     pooling=config["pooling"]
-    # ).to(device)
+    model = AqSolModel(
+        30,
+        config,
+        lr=config["lr"],
+        weight_decay=config["weight_decay"],
+        pooling=config["pooling"]
+    ).to(device)
     # global_model: AqSolModel
     # with open("model/trained_model", "rb") as f:
     #     global_model = pickle.load(f)
     # global_model.train()
-    model = DSM()
+    # model = DSM()
     # model = DSM(model=global_model)
     # print(model)
-    train = AqSolDBDataset.from_deepchem("data/aqsoldb_train")
+    train = AqSolDBDataset.from_deepchem("data/aqsoldb_temp")
     test = AqSolDBDataset.from_deepchem("data/aqsoldb_test")
-    validation = AqSolDBDataset.from_deepchem("data/aqsoldb_valid")
     trainer = Trainer(
         model,
         train,
         config["batch_size"],
         device
     )
-    validator = Validator(model, validation, device)
-    trainer.run(
-        validator=validator,
-        tuning=True,
+    trainer.run_cross_validation(
+        AqSolModel,
         wandb_run=wandb_run,
+        config=config,
         patience=config["patience"]
     )
     test_validator = Validator(model, test, device)

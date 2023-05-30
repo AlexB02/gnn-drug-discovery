@@ -14,21 +14,21 @@ aqsoldb = pd.DataFrame({
   "SMILES": aqsoldb["SMILES"]
 })
 
-train, test = train_test_split(aqsoldb, test_size=0.1)
-# validation, test = train_test_split(test_and_validation, test_size=0.5)
+train, test_and_validation = train_test_split(aqsoldb, test_size=0.2)
+validation, test = train_test_split(test_and_validation, test_size=0.5)
 
 train.to_csv("data/train.csv")
-# validation.to_csv("data/validation.csv")
+validation.to_csv("data/validation.csv")
 test.to_csv("data/test.csv")
 
 train = NumpyDataset(train['SMILES'], y=train['logS'])
-# validation = NumpyDataset(validation['SMILES'], y=validation['logS'])
+validation = NumpyDataset(validation['SMILES'], y=validation['logS'])
 test = NumpyDataset(test['SMILES'], y=test['logS'])
 
 transformer = MinMaxTransformer(transform_y=True, dataset=train)
 
 train = transformer.transform(train)
-# validation = transformer.transform(validation)
+validation = transformer.transform(validation)
 test = transformer.transform(test)
 
 with open("data/scale_data.log", "w") as f:
@@ -54,7 +54,7 @@ def featurize_dataset(dataset, featurizer) -> tuple:
 featurizer = MolGraphConvFeaturizer(use_edges=True)
 
 train_featurized, train_y = featurize_dataset(train, featurizer)
-# validation_featurized, validation_y = featurize_dataset(validation, featurizer)
+validation_featurized, validation_y = featurize_dataset(validation, featurizer)
 test_featurized, test_y = featurize_dataset(test, featurizer)
 
 
@@ -63,11 +63,11 @@ DiskDataset.from_numpy(
     y=train_y,
     data_dir="data/aqsoldb_train"
 )
-# DiskDataset.from_numpy(
-#     X=validation_featurized,
-#     y=validation_y,
-#     data_dir="data/aqsoldb_valid"
-# )
+DiskDataset.from_numpy(
+    X=validation_featurized,
+    y=validation_y,
+    data_dir="data/aqsoldb_valid"
+)
 DiskDataset.from_numpy(
     X=test_featurized,
     y=test_y,
