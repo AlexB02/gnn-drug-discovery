@@ -94,7 +94,7 @@ sweep_config = {
         },
         "hidden_layers": {
             "min": 0,
-            "max": 1
+            "max": 4
         },
         "c_do_p": {
             "min": float(0),
