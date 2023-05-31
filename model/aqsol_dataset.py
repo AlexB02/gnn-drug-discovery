@@ -21,7 +21,8 @@ class AqSolDBDataset(Dataset):
     def __getitem__(self, i):
         graph = self.graph_list[i]
         label = self.labels[i]
-        return graph, label
+        graph.y = label
+        return graph
 
     def __len__(self):
         return self.length
@@ -30,6 +31,4 @@ class AqSolDBDataset(Dataset):
         return len(self)
 
     def get(self, idx):
-        graph = self.graph_list[idx]
-        label = self.labels[idx]
-        return graph, label
+        return self.__getitem__(idx)

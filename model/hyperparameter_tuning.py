@@ -1,16 +1,42 @@
 import torch
+from torch_geometric.data import Data, Dataset
 import wandb
-from deepchem.data import DiskDataset
+# from deepchem.data import DiskDataset
 from aqsol_model import AqSolModel, Trainer, Validator
-from aqsol_dataset import AqSolDBDataset
+# from aqsol_dataset import AqSolDBDataset
 import subprocess
 import os
 
+
+class SolubilityDataset(Dataset):
+
+    def __init__(self, mols, sols):
+        super(SolubilityDataset, self).__init__()
+        self.data = []
+        for mol, logs in zip(mols, sols):
+            x = torch.tensor(mol.node_features).float()
+            edge_index = torch.tensor(mol.edge_index)
+            y = torch.tensor(logs).float()
+
+            self.data.append(
+                Data(x=x, edge_index=edge_index, y=y)
+            )
+
+    def len(self):
+        return len(self.data)
+
+    def get(self, idx):
+        return self.data[idx]
+
+
 print("Loading data")
 data_dir = "data/"
-train = DiskDataset(data_dir + "aqsoldb_train")  # .select(range(1))
-validation = DiskDataset(data_dir + "aqsoldb_valid")
-test = DiskDataset(data_dir + "aqsoldb_test")
+# train = DiskDataset(data_dir + "aqsoldb_train_s")  # .select(range(1))
+# validation = DiskDataset(data_dir + "aqsoldb_valid_s")
+# test = DiskDataset(data_dir + "aqsoldb_test_s")
+train = torch.load(data_dir + "train.pt")
+validation = torch.load(data_dir + "valid.pt")
+test = torch.load(data_dir + "test.pt")
 print("Loaded data")
 
 
@@ -23,19 +49,16 @@ if torch.cuda.is_available():
     subprocess.call(f"echo {torch.cuda.get_device_name()}", shell=True)
 else:
     subprocess.call("echo CUDA not available", shell=True)
-    print("CUDA not available")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Loaded device: {device}")
 
-print("Logging into wandb")
 wandb.login(key="f1c8bcb101a330b26b1259276de798892fbce6a0")
-print("Logged into wandb")
 
 
-train_dataset = AqSolDBDataset(train.make_pytorch_dataset())
-validation_dataset = AqSolDBDataset(validation.make_pytorch_dataset())
-test_dataset = AqSolDBDataset(test.make_pytorch_dataset())
+# train_dataset = AqSolDBDataset(train.make_pytorch_dataset())
+# validation_dataset = AqSolDBDataset(validation.make_pytorch_dataset())
+# test_dataset = AqSolDBDataset(test.make_pytorch_dataset())
 
 
 sweep_config = {
@@ -47,35 +70,34 @@ sweep_config = {
     },
     "parameters": {
         "batch_size": {
-            "values": [32, 64]
+            "values": [64]
         },
         "lr": {
-            "values": [1e-3, 1e-2, 1e-1]
+            "values": [0.0023]
         },
         "weight_decay": {
-            "min": float(0),
-            "max": 1e-1
+            "values": [3.2e-5]
         },
         "pooling": {
-            "values": ["add", "mean"]
+            "values": ["mean", "add"]
         },
         "architecture": {
-            "values": ["SUM", "GAT", "GCN"]
+            "values": ["GCN", "GAT", "SUM"]
         },
         "patience": {
-            "values": [25]
+            "values": [50]
         },
         "hidden_channels": {
-            "values": [30 * i for i in range(1, 6)]
+            "values": [32, 64, 128]
         },
-        "hidden_layers": {
-            "values": [0, 1, 2, 3, 4, 5, 6]
+        "conv_steps": {
+            "values": [1]
         },
         "linear_layers": {
-            "values": [0, 1, 2, 3, 4, 5, 6]
+            "values": [0]
         },
         "dropout": {
-            "values": [0.1, 0.2, 0.3]
+            "values": [0]
         }
     }
 }
@@ -96,11 +118,11 @@ def tune_hyperparameters(config=None):
         weight_decay=config.weight_decay,
         pooling=config.pooling
     ).to(device)
-    trainer = Trainer(model, train_dataset, config.batch_size, device)
-    validator = Validator(model, validation_dataset, device)
+    trainer = Trainer(model, train, config.batch_size, device)
+    validator = Validator(model, validation, device)
     trainer.run(
         validator,
-        train_dataset,
+        train,
         model,
         wandb_run,
         patience=config.patience
@@ -116,7 +138,7 @@ wandb.agent(
     sweep_id,
     function=tune_hyperparameters,
     project="SolubilityPredictor",
-    count=5
+    count=30
 )
 wandb.finish()
 

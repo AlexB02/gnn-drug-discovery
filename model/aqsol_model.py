@@ -12,11 +12,12 @@ from torch_geometric.nn import MessagePassing
 from sklearn.model_selection import KFold
 from numpy import std
 import wandb
-from aqsol_dataset import AqSolDBDataset
-import pickle
+# from aqsol_dataset import AqSolDBDataset
+# import pickle
 from device import get_device
 import numpy as np
 from torch_geometric.utils import add_self_loops
+from torch_geometric.data import Data, Dataset
 
 
 def calculate_wmse(mse, std_diff) -> float:
@@ -27,26 +28,28 @@ class SumConv(MessagePassing):
 
     def __init__(self, in_channels, out_channels):
         super(SumConv, self).__init__(aggr='add')
-        hidden = (out_channels + in_channels) // 2
+        # hidden = (out_channels + in_channels) // 2
 
-        self.lin1 = nn.Linear(in_channels, hidden)
-        self.lin2 = nn.Linear(hidden, out_channels)
+        self.message_lin = nn.Linear(in_channels, out_channels)
+        self.aggr_lin = nn.Linear(out_channels, out_channels)
 
         self.in_norm = nn.BatchNorm1d(in_channels)
         self.out_norm = nn.BatchNorm1d(out_channels)
 
     # Messages received from adjacent nodes
+    # Learns how to map incoming messages
     def message(self, x_j):
+        x_j = F.dropout(x_j, training=self.training)
+        x_j = self.message_lin(x_j)
         return x_j
 
     # Aggregated
 
     # New tensor for this node
+    # Learns how to interpret aggregated channels
     def update(self, aggr_out):
         aggr_out = F.dropout(aggr_out, training=self.training)
-        aggr_out = self.lin1(aggr_out).relu()
-        aggr_out = F.dropout(aggr_out, training=self.training)
-        aggr_out = self.lin2(aggr_out)
+        aggr_out = self.aggr_lin(aggr_out)
         return aggr_out
 
     def forward(self, x, edge_index):
@@ -77,55 +80,52 @@ class AqSolModel(nn.Module):
         }[config["architecture"]]
 
         hidden_channels = config["hidden_channels"]
-        hidden_layers = config["hidden_layers"]
+        # self.conv_steps = config["conv_steps"]
 
-        dropout_p = config["dropout"]
-        self.dropout = nn.Dropout(p=dropout_p)
+        # dropout_p = config["dropout"]
+        # self.dropout = nn.Dropout(p=dropout_p)
 
         self.conv1 = self.arch(n_features, hidden_channels)
-        self.conv_layers = nn.ModuleList([
-            self.arch(hidden_channels,
-                      hidden_channels) for _ in range(hidden_layers)
-        ])
+        self.conv2 = self.arch(hidden_channels, hidden_channels // 2)
+        self.conv3 = self.arch(hidden_channels // 2, hidden_channels // 4)
+        # self.conv_layers = nn.ModuleList([
+        #     self.arch(hidden_channels,
+        #               hidden_channels) for _ in range(hidden_layers)
+        # ])
 
-        linear_layers = config["linear_layers"]
-        self.lin_layers = nn.ModuleList([
-            nn.Linear(hidden_channels,
-                      hidden_channels) for _ in range(linear_layers)
-        ])
-        self.lin = nn.Linear(hidden_channels, 1)
+        # linear_layers = config["linear_layers"]
+        # self.lin_layers = nn.ModuleList([
+        #     nn.Linear(hidden_channels,
+        #               hidden_channels) for _ in range(linear_layers)
+        # ])
+        self.lin = nn.Linear(hidden_channels // 4, 1)
 
-        self.loss = nn.MSELoss()
-        self.optimizer = Adam(
-            self.parameters(),
-            lr=lr,
-            weight_decay=weight_decay)
         self.pooling = {
             "mean": global_mean_pool,
             "add": global_add_pool
         }[pooling]
 
+        self.optimizer = Adam(
+            self.parameters(),
+            lr=lr,
+            weight_decay=weight_decay)
+
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
+        targets = mol.y
 
-        # # Handle conv model
-        mol_x = self.dropout(mol_x)
         mol_x = self.conv1(mol_x, mol_edge_index).relu()
+        mol_x = self.conv2(mol_x, mol_edge_index).relu()
+        mol_x = self.conv3(mol_x, mol_edge_index)
 
-        for conv_layer in self.conv_layers:
-            mol_x = self.dropout(mol_x)
-            mol_x = conv_layer(mol_x, mol_edge_index).relu()
+        mol_x = global_mean_pool(mol_x, mol.batch)
 
-        mol_x = self.pooling(mol_x, mol.batch)
-
-        for lin_layer in self.lin_layers:
-            mol_x = F.dropout(mol_x, training=self.training)
-            mol_x = lin_layer(mol_x).relu()
-
-        mol_x = F.dropout(mol_x, training=self.training)
+        mol_x = F.dropout(mol_x, training=self.training, p=0.2)
         mol_x = self.lin(mol_x)
 
-        return mol_x
+        loss = torch.nn.MSELoss()(mol_x, targets.reshape(-1, 1).type_as(mol_x))
+
+        return mol_x, loss
 
     def predict(self, mol, min=-13.1719, max=2.1376816201):
         pred = self.forward(mol).detach().cpu().numpy().flatten()
@@ -182,15 +182,18 @@ class Validator:
 
     def validate(self, verbose=False) -> float:
         self.model.eval()
-        for batch in DataLoader(self.dataset, batch_size=len(self.dataset)):
-            graphs, labels = batch
-            graphs = graphs.to(self.device)
+        for data in DataLoader(self.dataset, batch_size=len(self.dataset)):
+            graphs, labels = data.to(self.device), data.y
 
-            preds = self.model(graphs).detach().cpu().numpy().flatten()
+            preds, loss = self.model(graphs)
+            preds = preds.detach().numpy().flatten()
             labels = labels.detach().numpy()
+
             if verbose:
                 print("Labels", labels, "Predictions", preds)
-            evs = explained_variance_score(labels, preds)
+            evs = explained_variance_score(labels,
+                                           preds,
+                                           multioutput="raw_values")
             mse = mean_squared_error(labels, preds)
             mae = mean_absolute_error(labels, preds)
             std_diff = std(labels) - std(preds)
@@ -216,22 +219,42 @@ class Trainer:
 
     def train_one_epoch(self, train_dataset, model):
         model.train()
-        model.optimizer.zero_grad()
-        epoch_loss = 0
-        for batch in DataLoader(train_dataset, batch_size=self.batch_size):
-            graphs, labels = batch
-            graphs = graphs.to(self.device)
+        epoch_losses = []
+        epoch_true = []
+        epoch_pred = []
 
-            labels = labels.reshape((len(labels), 1))
-            labels = labels.to(self.device)
+        for data in DataLoader(train_dataset,
+                               batch_size=self.batch_size):
+            data = data.to(self.device)
+            graphs, labels = data, data.y
 
-            pred = model(graphs)
-            loss = model.loss(pred, labels)
-            epoch_loss += loss.item()
+            model.optimizer.zero_grad()
+            preds, loss = model(graphs)
+            # print(preds)
+            # print(labels)
+            # print(loss.item())
+
+            y_true = labels.cpu().detach().numpy()
+            y_pred = preds.cpu().detach().numpy().flatten()
+
+            epoch_true.extend(list(y_true))
+            epoch_pred.extend(list(y_pred))
+
+            evs = explained_variance_score(
+                y_true,
+                y_pred,
+                multioutput="raw_values"
+            )
+            # print(evs.item())
+
+            epoch_losses.append(loss.item())
             loss.backward()
             model.optimizer.step()
-        self.mean_loss += epoch_loss
-        return epoch_loss
+
+        epoch_evs = explained_variance_score(
+            epoch_true, epoch_pred, multioutput="raw_values"
+        )
+        return sum(epoch_losses) / len(epoch_losses), epoch_evs
 
     def run(
         self,
@@ -242,6 +265,8 @@ class Trainer:
         patience=20,
         log=True
     ):
+        print("Training model")
+        print(model)
         lowest_mse = float("inf")
         epoch_counter = 0
         not_improved_counter = 0
@@ -251,7 +276,8 @@ class Trainer:
 
         while not_improved_counter < patience and epoch_counter <= 1000:
             epoch_counter += 1
-            epoch_loss = self.train_one_epoch(train_dataset, model)
+            epoch_loss, evs = self.train_one_epoch(train_dataset, model)
+            # print("Epoch EVS", evs)
             validation = validator.validate()
             if log:
                 wandb.log({"epoch": epoch_counter + 1}, commit=False)
@@ -287,7 +313,9 @@ class Trainer:
             train_dataset = self.dataset.index_select(train_index)
             validation_dataset = self.dataset.index_select(val_index)
             print(type(validation_dataset))
-            fold_model = model_class(30, model_config, **model_kwargs).to(device)
+            fold_model = model_class(30,
+                                     model_config,
+                                     **model_kwargs).to(device)
             fold_validator = Validator(fold_model, validation_dataset, device)
             loss = self.run(
                 fold_validator,
@@ -315,28 +343,36 @@ class Trainer:
         })
 
 
+class SolubilityDataset(Dataset):
+
+    def __init__(self, mols, sols):
+        super(SolubilityDataset, self).__init__()
+        self.data = []
+        for mol, logs in zip(mols, sols):
+            x = torch.tensor(mol.node_features)
+            edge_index = torch.tensor(mol.edge_index)
+            y = torch.tensor(logs)
+
+            self.data.append(
+                Data(x=x, edge_index=edge_index, y=y)
+            )
+
+    def len(self):
+        return len(self.data)
+
+    def get(self, idx):
+        return self.data[idx]
+
+
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
-        "batch_size": 32,
-        # "lr": 0.000001,
-        # "weight_decay": 0.00000182366906032867,
-        # "architecture": "GAT",
-        # "dataset": "min-max-scale",
-        # "pooling": "mean",
-        "patience": 69
-        # "conv_hc_1": 30,
-        # "conv_hc_2": 300,
-        # "conv_hc_3": 210,
-        # "conv_hc_4": 270,
-        # "conv_do_1": 0.02624513997586908,
-        # "conv_do_2": 0.3518271559744446,
-        # "conv_do_3": 0.75788218327396,
-        # "conv_do_4": 0.30115301272947137,
-        # "lin_n_1": 30,
-        # "lin_n_2": 270,
-        # "lin_do_1": 0.9070104584027368,
-        # "lin_do_2": 0.8803097834067043
+        "lr": 0.0023,
+        "weight_decay": 3.2e-5,
+        "architecture": "GCN",
+        "pooling": "mean",
+        "hidden_channels": 128,
+        "batch_size": 64
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
@@ -346,28 +382,30 @@ if __name__ == "__main__":
         weight_decay=config["weight_decay"],
         pooling=config["pooling"]
     ).to(device)
-    # global_model: AqSolModel
-    # with open("model/trained_model", "rb") as f:
-    #     global_model = pickle.load(f)
-    # global_model.train()
-    # model = DSM()
-    # model = DSM(model=global_model)
-    # print(model)
-    train = AqSolDBDataset.from_deepchem("data/aqsoldb_temp")
-    test = AqSolDBDataset.from_deepchem("data/aqsoldb_test")
+
+    # train = AqSolDBDataset.from_deepchem("data/aqsoldb_train_s")
+    # validation = AqSolDBDataset.from_deepchem("data/aqsoldb_valid_s")
+    # test = AqSolDBDataset.from_deepchem("data/aqsoldb_test_s")
+    train = torch.load("data/train.pt")
+    validation = torch.load("data/valid.pt")
+    test = torch.load("data/test.pt")
+    # print(len(train), len(validation), len(test))
     trainer = Trainer(
         model,
         train,
         config["batch_size"],
         device
     )
-    trainer.run_cross_validation(
-        AqSolModel,
-        wandb_run=wandb_run,
-        config=config,
-        patience=config["patience"]
-    )
+    validator = Validator(model,
+                          train,
+                          device)
+    trainer.run(validator,
+                train,
+                model,
+                wandb_run,
+                patience=25)
+
     test_validator = Validator(model, test, device)
     wandb.log(test_validator.validate())
-    with open("model/small_trained_model", "wb") as f:
-        pickle.dump(model, f)
+    # with open("model/small_trained_model", "wb") as f:
+    #     pickle.dump(model, f)

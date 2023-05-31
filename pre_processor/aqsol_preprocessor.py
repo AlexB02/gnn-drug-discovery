@@ -2,9 +2,11 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from deepchem.trans import MinMaxTransformer
 from deepchem.data import NumpyDataset
-from deepchem.data import DiskDataset
+# from deepchem.data import DiskDataset
 from deepchem.feat import MolGraphConvFeaturizer
 from deepchem.feat.graph_data import GraphData
+from torch_geometric.data import Data, Dataset
+import torch
 from numpy import array
 
 
@@ -58,18 +60,47 @@ validation_featurized, validation_y = featurize_dataset(validation, featurizer)
 test_featurized, test_y = featurize_dataset(test, featurizer)
 
 
-DiskDataset.from_numpy(
-    X=train_featurized,
-    y=train_y,
-    data_dir="data/aqsoldb_train"
-)
-DiskDataset.from_numpy(
-    X=validation_featurized,
-    y=validation_y,
-    data_dir="data/aqsoldb_valid"
-)
-DiskDataset.from_numpy(
-    X=test_featurized,
-    y=test_y,
-    data_dir="data/aqsoldb_test"
-)
+class SolubilityDataset(Dataset):
+
+    def __init__(self, mols, sols):
+        super(SolubilityDataset, self).__init__()
+        self.data = []
+        for mol, logs in zip(mols, sols):
+            x = torch.tensor(mol.node_features).float()
+            edge_index = torch.tensor(mol.edge_index)
+            y = torch.tensor(logs).float()
+
+            self.data.append(
+                Data(x=x, edge_index=edge_index, y=y)
+            )
+
+    def len(self):
+        return len(self.data)
+
+    def get(self, idx):
+        return self.data[idx]
+
+
+train_torch_dataset = SolubilityDataset(train_featurized, train_y)
+torch.save(train_torch_dataset, "data/train.pt")
+valid_torch_dataset = SolubilityDataset(validation_featurized, validation_y)
+torch.save(valid_torch_dataset, "data/valid.pt")
+test_torch_dataset = SolubilityDataset(test_featurized, test_y)
+torch.save(test_torch_dataset, "data/test.pt")
+
+
+# DiskDataset.from_numpy(
+#     X=train_featurized,
+#     y=train_y,
+#     data_dir="data/aqsoldb_train"
+# )
+# DiskDataset.from_numpy(
+#     X=validation_featurized,
+#     y=validation_y,
+#     data_dir="data/aqsoldb_valid"
+# )
+# DiskDataset.from_numpy(
+#     X=test_featurized,
+#     y=test_y,
+#     data_dir="data/aqsoldb_test"
+# )
