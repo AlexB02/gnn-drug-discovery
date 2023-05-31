@@ -73,31 +73,36 @@ sweep_config = {
             "values": [64]
         },
         "lr": {
-            "values": [0.0023]
+            "min": 1e-5,
+            "max": 1e-2
         },
         "weight_decay": {
-            "values": [3.2e-5]
+            "min": 0.0,
+            "max": 1e-5
         },
         "pooling": {
             "values": ["mean", "add"]
         },
         "architecture": {
-            "values": ["GCN", "GAT", "SUM"]
+            "values": ["GCN", "GAT"]
         },
         "patience": {
-            "values": [50]
+            "values": [10, 20, 30, 40, 50]
         },
         "hidden_channels": {
-            "values": [32, 64, 128]
+            "values": [32, 64, 128, 256, 512]
         },
-        "conv_steps": {
-            "values": [1]
+        "hidden_layers": {
+            "min": 0,
+            "max": 1
         },
-        "linear_layers": {
-            "values": [0]
+        "c_do_p": {
+            "min": float(0),
+            "max": float(1)
         },
-        "dropout": {
-            "values": [0]
+        "l_do_p": {
+            "min": float(0),
+            "max": float(1)
         }
     }
 }

@@ -80,25 +80,25 @@ class AqSolModel(nn.Module):
         }[config["architecture"]]
 
         hidden_channels = config["hidden_channels"]
-        # self.conv_steps = config["conv_steps"]
+        hidden_layers = config["hidden_layers"]
 
-        # dropout_p = config["dropout"]
-        # self.dropout = nn.Dropout(p=dropout_p)
+        self.c_do_p = config["c_do_p"]
+        self.l_do_p = config["l_do_p"]
+        # self.dropout = nn.Dropout(p=0.2)
 
         self.conv1 = self.arch(n_features, hidden_channels)
-        self.conv2 = self.arch(hidden_channels, hidden_channels // 2)
-        self.conv3 = self.arch(hidden_channels // 2, hidden_channels // 4)
-        # self.conv_layers = nn.ModuleList([
-        #     self.arch(hidden_channels,
-        #               hidden_channels) for _ in range(hidden_layers)
-        # ])
+
+        self.conv_layers = nn.ModuleList([
+            self.arch(hidden_channels,
+                      hidden_channels) for _ in range(hidden_layers)
+        ])
 
         # linear_layers = config["linear_layers"]
         # self.lin_layers = nn.ModuleList([
         #     nn.Linear(hidden_channels,
         #               hidden_channels) for _ in range(linear_layers)
         # ])
-        self.lin = nn.Linear(hidden_channels // 4, 1)
+        self.lin = nn.Linear(hidden_channels, 1)
 
         self.pooling = {
             "mean": global_mean_pool,
@@ -112,20 +112,21 @@ class AqSolModel(nn.Module):
 
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
-        targets = mol.y
+        # targets = mol.y
 
+        mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
         mol_x = self.conv1(mol_x, mol_edge_index).relu()
-        mol_x = self.conv2(mol_x, mol_edge_index).relu()
-        mol_x = self.conv3(mol_x, mol_edge_index)
+
+        for conv_layer in self.conv_layers:
+            mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
+            mol_x = conv_layer(mol_x, mol_edge_index).relu()
 
         mol_x = global_mean_pool(mol_x, mol.batch)
 
-        mol_x = F.dropout(mol_x, training=self.training, p=0.2)
+        mol_x = F.dropout(mol_x, training=self.training, p=self.l_do_p)
         mol_x = self.lin(mol_x)
 
-        loss = torch.nn.MSELoss()(mol_x, targets.reshape(-1, 1).type_as(mol_x))
-
-        return mol_x, loss
+        return mol_x
 
     def predict(self, mol, min=-13.1719, max=2.1376816201):
         pred = self.forward(mol).detach().cpu().numpy().flatten()
@@ -185,7 +186,7 @@ class Validator:
         for data in DataLoader(self.dataset, batch_size=len(self.dataset)):
             graphs, labels = data.to(self.device), data.y
 
-            preds, loss = self.model(graphs)
+            preds = self.model(graphs)
             preds = preds.detach().numpy().flatten()
             labels = labels.detach().numpy()
 
@@ -222,6 +223,7 @@ class Trainer:
         epoch_losses = []
         epoch_true = []
         epoch_pred = []
+        criterion = torch.nn.MSELoss()
 
         for data in DataLoader(train_dataset,
                                batch_size=self.batch_size):
@@ -229,7 +231,9 @@ class Trainer:
             graphs, labels = data, data.y
 
             model.optimizer.zero_grad()
-            preds, loss = model(graphs)
+            preds = model(graphs)
+            loss = criterion(preds, labels.reshape(-1, 1).type_as(preds))
+
             # print(preds)
             # print(labels)
             # print(loss.item())
@@ -240,11 +244,11 @@ class Trainer:
             epoch_true.extend(list(y_true))
             epoch_pred.extend(list(y_pred))
 
-            evs = explained_variance_score(
-                y_true,
-                y_pred,
-                multioutput="raw_values"
-            )
+            # evs = explained_variance_score(
+            #     y_true,
+            #     y_pred,
+            #     multioutput="raw_values"
+            # )
             # print(evs.item())
 
             epoch_losses.append(loss.item())
@@ -367,12 +371,16 @@ class SolubilityDataset(Dataset):
 if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
+        "batch_size": 64,
         "lr": 0.0023,
         "weight_decay": 3.2e-5,
-        "architecture": "GCN",
         "pooling": "mean",
+        "architecture": "GCN",
+        "patience": 50,
         "hidden_channels": 128,
-        "batch_size": 64
+        "hidden_layers": 3,
+        "c_do_p": 0.1,
+        "l_do_p": 0.5
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
