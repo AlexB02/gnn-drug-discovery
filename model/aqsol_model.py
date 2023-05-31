@@ -187,8 +187,8 @@ class Validator:
             graphs, labels = data.to(self.device), data.y
 
             preds = self.model(graphs)
-            preds = preds.detach().numpy().flatten()
-            labels = labels.detach().numpy()
+            preds = preds.detach().cpu().numpy().flatten()
+            labels = labels.detach().cpu().numpy()
 
             if verbose:
                 print("Labels", labels, "Predictions", preds)
