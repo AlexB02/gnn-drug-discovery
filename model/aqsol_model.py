@@ -383,6 +383,7 @@ if __name__ == "__main__":
         "patience": 50,
         "hidden_channels": 128,
         "hidden_layers": 3,
+        "linear_layers": 0,
         "c_do_p": 0.1,
         "l_do_p": 0.5
     }

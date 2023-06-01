@@ -87,19 +87,17 @@ sweep_config = {
             "values": ["GCN", "GAT"]
         },
         "patience": {
-            "values": [10, 20, 30, 40, 50]
+            "values": [10, 20, 30]
         },
         "hidden_channels": {
             "min": 30,
             "max": 500
         },
         "hidden_layers": {
-            "min": 0,
-            "max": 8
+            "values": [0, 1, 2, 3]
         },
         "linear_layers": {
-            "min": 0,
-            "max": 6
+            "values": [0, 1, 2, 3]
         },
         "c_do_p": {
             "min": float(0),
