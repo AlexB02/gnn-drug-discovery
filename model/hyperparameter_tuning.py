@@ -73,8 +73,8 @@ sweep_config = {
             "values": [64]
         },
         "lr": {
-            "min": 1e-5,
-            "max": 1e-2
+            "min": 1e-3,
+            "max": 1e-1
         },
         "weight_decay": {
             "min": 0.0,
@@ -90,11 +90,16 @@ sweep_config = {
             "values": [10, 20, 30, 40, 50]
         },
         "hidden_channels": {
-            "values": [32, 64, 128, 256, 512]
+            "min": 30,
+            "max": 500
         },
         "hidden_layers": {
             "min": 0,
-            "max": 4
+            "max": 8
+        },
+        "linear_layers": {
+            "min": 0,
+            "max": 6
         },
         "c_do_p": {
             "min": float(0),

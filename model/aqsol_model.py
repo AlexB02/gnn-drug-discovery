@@ -93,11 +93,11 @@ class AqSolModel(nn.Module):
                       hidden_channels) for _ in range(hidden_layers)
         ])
 
-        # linear_layers = config["linear_layers"]
-        # self.lin_layers = nn.ModuleList([
-        #     nn.Linear(hidden_channels,
-        #               hidden_channels) for _ in range(linear_layers)
-        # ])
+        linear_layers = config["linear_layers"]
+        self.lin_layers = nn.ModuleList([
+            nn.Linear(hidden_channels,
+                      hidden_channels) for _ in range(linear_layers)
+        ])
         self.lin = nn.Linear(hidden_channels, 1)
 
         self.pooling = {
@@ -122,6 +122,10 @@ class AqSolModel(nn.Module):
             mol_x = conv_layer(mol_x, mol_edge_index).relu()
 
         mol_x = global_mean_pool(mol_x, mol.batch)
+
+        for lin_layer in self.lin_layers:
+            mol_x = F.dropout(mol_x, training=self.training, p=self.l_do_p)
+            mol_x = lin_layer(mol_x).relu()
 
         mol_x = F.dropout(mol_x, training=self.training, p=self.l_do_p)
         mol_x = self.lin(mol_x)
