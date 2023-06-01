@@ -121,7 +121,7 @@ class AqSolModel(nn.Module):
             mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
             mol_x = conv_layer(mol_x, mol_edge_index).relu()
 
-        mol_x = global_mean_pool(mol_x, mol.batch)
+        mol_x = self.pooling(mol_x, mol.batch)
 
         for lin_layer in self.lin_layers:
             mol_x = F.dropout(mol_x, training=self.training, p=self.l_do_p)
