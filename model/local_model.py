@@ -6,6 +6,7 @@ from aqsol_model import LocalModel, Trainer, Validator, SolubilityDataset
 import wandb
 from sklearn.metrics import (
     mean_squared_error, explained_variance_score, mean_absolute_error)
+from utils.log import log
 
 
 def generate_dataset(seed: Data,
@@ -33,8 +34,8 @@ def generate_train_valid(dataset: Dataset, split: float) -> tuple:
 
 
 def tune_hyperparameters(config=None):
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.init(config=config)
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = wandb.config
     tests = 10
     preds = np.zeros(tests)
@@ -43,9 +44,11 @@ def tune_hyperparameters(config=None):
 
     train: SolubilityDataset = torch.load("data/train.pt")
     ds: SolubilityDataset = torch.load("data/valid.pt")
+    log("Created datasets")
 
     for i, idx in enumerate(np.random.randint(0, len(ds), size=tests)):
         seed = ds[idx]
+        log("Got seed")
         model = LocalModel(
             30,
             config,
@@ -53,12 +56,15 @@ def tune_hyperparameters(config=None):
             weight_decay=config["weight_decay"],
             pooling=config["pooling"]
         ).to(device)
+        log("Created local model")
 
         temp: SolubilityDataset = generate_dataset(seed,
                                                    config["dataset_size"],
                                                    train,
                                                    similar=config["tanimoto"])
+        log("Generated temp dataset")
         temp_train, temp_validation = generate_train_valid(temp, 0.3)
+        log("Generated train and valid datasets")
 
         trainer = Trainer(
             model,
@@ -66,20 +72,28 @@ def tune_hyperparameters(config=None):
             config["batch_size"],
             device
         )
+        log("Created trainer")
         validator = Validator(model,
                               temp_validation,
                               device)
+        log("Created validator")
         losses[i] = trainer.run(validator,
                                 train,
                                 model,
                                 # wandb_run,
                                 patience=25,
                                 log=False)
+        log("Set losses[i]")
         pred = model(seed).detach().cpu().numpy().flatten()[0]
+        log("Got pred")
         label = seed.y.cpu().numpy()
+        log("Got label")
         preds[i] = pred
+        log("Set pred")
         labels[i] = label
+        log("Set label")
         print(i, (pred - label) ** 2)
+        log("Calculated and printed")
 
     wandb.log(
         {
@@ -88,6 +102,7 @@ def tune_hyperparameters(config=None):
             "mae": mean_absolute_error(labels, preds),
             "loss": losses.mean()
         })
+    log("Wandb logged")
 
 
 if __name__ == "__main__":
