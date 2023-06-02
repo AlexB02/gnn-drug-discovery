@@ -33,6 +33,7 @@ def generate_train_valid(dataset: Dataset, split: float) -> tuple:
 
 
 def tune_hyperparameters(config=None):
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     wandb.init(config=config)
     config = wandb.config
     tests = 10
@@ -90,7 +91,6 @@ def tune_hyperparameters(config=None):
 
 
 if __name__ == "__main__":
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     sweep_config = {
         "name": "Local",
