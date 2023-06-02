@@ -8,7 +8,6 @@ from torch_geometric.loader import DataLoader
 from sklearn.metrics import (
     mean_squared_error, mean_absolute_error, explained_variance_score
 )
-from torch_geometric.nn import MessagePassing
 from sklearn.model_selection import KFold
 from numpy import std
 import wandb
@@ -16,48 +15,11 @@ import wandb
 # import pickle
 from device import get_device
 import numpy as np
-from torch_geometric.utils import add_self_loops
 from torch_geometric.data import Data, Dataset
 
 
 def calculate_wmse(mse, std_diff) -> float:
     return mse * (std_diff ** 2)
-
-
-class SumConv(MessagePassing):
-
-    def __init__(self, in_channels, out_channels):
-        super(SumConv, self).__init__(aggr='add')
-        # hidden = (out_channels + in_channels) // 2
-
-        self.message_lin = nn.Linear(in_channels, out_channels)
-        self.aggr_lin = nn.Linear(out_channels, out_channels)
-
-        self.in_norm = nn.BatchNorm1d(in_channels)
-        self.out_norm = nn.BatchNorm1d(out_channels)
-
-    # Messages received from adjacent nodes
-    # Learns how to map incoming messages
-    def message(self, x_j):
-        x_j = F.dropout(x_j, training=self.training)
-        x_j = self.message_lin(x_j)
-        return x_j
-
-    # Aggregated
-
-    # New tensor for this node
-    # Learns how to interpret aggregated channels
-    def update(self, aggr_out):
-        aggr_out = F.dropout(aggr_out, training=self.training)
-        aggr_out = self.aggr_lin(aggr_out)
-        return aggr_out
-
-    def forward(self, x, edge_index):
-        edge_index, _ = add_self_loops(edge_index, num_nodes=x.size(0))
-        x = self.in_norm(x)
-        x = self.propagate(edge_index, x=x)
-        x = self.out_norm(x)
-        return x
 
 
 class AqSolModel(nn.Module):
@@ -75,8 +37,7 @@ class AqSolModel(nn.Module):
 
         self.arch = {
             "GAT": GATConv,
-            "GCN": GCNConv,
-            "SUM": SumConv
+            "GCN": GCNConv
         }[config["architecture"]]
 
         hidden_channels = config["hidden_channels"]
@@ -84,7 +45,6 @@ class AqSolModel(nn.Module):
 
         self.c_do_p = config["c_do_p"]
         self.l_do_p = config["l_do_p"]
-        # self.dropout = nn.Dropout(p=0.2)
 
         self.conv1 = self.arch(n_features, hidden_channels)
 
@@ -112,7 +72,6 @@ class AqSolModel(nn.Module):
 
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
-        # targets = mol.y
 
         mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
         mol_x = self.conv1(mol_x, mol_edge_index).relu()
@@ -137,43 +96,76 @@ class AqSolModel(nn.Module):
         return pred * (max - min) + min
 
 
-class DSM(nn.Module):
+class LocalModel(nn.Module):
+    def __init__(
+            self,
+            n_features,
+            config,
+            lr=10**-3,
+            weight_decay=10**-2.5,
+            pooling="mean",
+            ):
+        super(LocalModel, self).__init__()
 
-    def __init__(self):
-        super(DSM, self).__init__()
-        self.gcn1 = GCNConv(30, 128)
-        self.gcn2 = GCNConv(128, 128 // 2)
-        self.gcn3 = GCNConv(128 // 2, 128 // 4)
+        self.config = config
 
-        self.fc1 = nn.Linear(128 // 4, 1)
+        self.arch = {
+            "GAT": GATConv,
+            "GCN": GCNConv
+        }[config["architecture"]]
 
-        self.loss = nn.MSELoss()
+        hidden_channels = config["hidden_channels"]
+        hidden_layers = config["hidden_layers"]
+
+        self.c_do_p = config["c_do_p"]
+        self.l_do_p = config["l_do_p"]
+
+        self.conv1 = self.arch(n_features, hidden_channels)
+
+        self.conv_layers = nn.ModuleList([
+            self.arch(hidden_channels,
+                      hidden_channels) for _ in range(hidden_layers)
+        ])
+
+        linear_layers = config["linear_layers"]
+        self.lin_layers = nn.ModuleList([
+            nn.Linear(hidden_channels,
+                      hidden_channels) for _ in range(linear_layers)
+        ])
+        self.lin = nn.Linear(hidden_channels, 1)
+
+        self.pooling = {
+            "mean": global_mean_pool,
+            "add": global_add_pool
+        }[pooling]
+
         self.optimizer = Adam(
             self.parameters(),
-            lr=1e-5,
-            weight_decay=0.00000182366906032867)
+            lr=lr,
+            weight_decay=weight_decay)
 
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
-        mol_x = self.gcn1(mol_x, mol_edge_index).relu()
-        mol_x = F.dropout(
-            mol_x,
-            p=0.2
-        )
-        mol_x = self.gcn2(mol_x, mol_edge_index).relu()
-        mol_x = F.dropout(
-            mol_x,
-            p=0.2
-        )
-        mol_x = self.gcn3(mol_x, mol_edge_index)
-        add = global_add_pool(mol_x, mol.batch)
-        mol_x = torch.cat([add], dim=1)
-        mol_x = self.fc1(mol_x)
+
+        mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
+        mol_x = self.conv1(mol_x, mol_edge_index).relu()
+
+        for conv_layer in self.conv_layers:
+            mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
+            mol_x = conv_layer(mol_x, mol_edge_index).relu()
+
+        mol_x = self.pooling(mol_x, mol.batch)
+
+        for lin_layer in self.lin_layers:
+            mol_x = F.dropout(mol_x, training=self.training, p=self.l_do_p)
+            mol_x = lin_layer(mol_x).relu()
+
+        mol_x = F.dropout(mol_x, training=self.training, p=self.l_do_p)
+        mol_x = self.lin(mol_x)
 
         return mol_x
 
     def predict(self, mol, min=-13.1719, max=2.1376816201):
-        self.eval()
         pred = self.forward(mol).detach().cpu().numpy().flatten()
         return pred * (max - min) + min
 
@@ -238,22 +230,11 @@ class Trainer:
             preds = model(graphs)
             loss = criterion(preds, labels.reshape(-1, 1).type_as(preds))
 
-            # print(preds)
-            # print(labels)
-            # print(loss.item())
-
             y_true = labels.cpu().detach().numpy()
             y_pred = preds.cpu().detach().numpy().flatten()
 
             epoch_true.extend(list(y_true))
             epoch_pred.extend(list(y_pred))
-
-            # evs = explained_variance_score(
-            #     y_true,
-            #     y_pred,
-            #     multioutput="raw_values"
-            # )
-            # print(evs.item())
 
             epoch_losses.append(loss.item())
             loss.backward()
@@ -272,9 +253,10 @@ class Trainer:
         wandb_run=None,
         patience=20,
         log=True
-    ):
-        print("Training model")
-        print(model)
+    ) -> float:
+        """Returns last epoch's loss"""
+        # print("Training model")
+        # print(model)
         lowest_mse = float("inf")
         epoch_counter = 0
         not_improved_counter = 0
@@ -289,16 +271,16 @@ class Trainer:
             validation = validator.validate()
             if log:
                 wandb.log({"epoch": epoch_counter + 1}, commit=False)
-            wandb.log({
-                "evs": validation['evs'],
-                "loss": epoch_loss,
-                "mse": validation['mse'],
-                "mae": validation['mae'],
-                "std_diff": validation['std_diff'],
-                "wmse": calculate_wmse(
-                    validation['mse'], validation['std_diff']
-                )
-            }, commit=True)
+                wandb.log({
+                    "evs": validation['evs'],
+                    "loss": epoch_loss,
+                    "mse": validation['mse'],
+                    "mae": validation['mae'],
+                    "std_diff": validation['std_diff'],
+                    "wmse": calculate_wmse(
+                        validation['mse'], validation['std_diff']
+                    )
+                }, commit=True)
             if validation["mse"] < lowest_mse:
                 lowest_mse = validation["mse"]
                 not_improved_counter = 0
@@ -376,16 +358,16 @@ if __name__ == "__main__":
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
         "batch_size": 64,
-        "lr": 0.0023,
-        "weight_decay": 3.2e-5,
-        "pooling": "mean",
+        "lr": 0.001555,
+        "weight_decay": 0.000008057,
+        "pooling": "add",
         "architecture": "GCN",
-        "patience": 50,
-        "hidden_channels": 128,
+        "patience": 30,
+        "hidden_channels": 165,
         "hidden_layers": 3,
-        "linear_layers": 0,
-        "c_do_p": 0.1,
-        "l_do_p": 0.5
+        "linear_layers": 2,
+        "c_do_p": 0.01287,
+        "l_do_p": 0.03007
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
@@ -396,13 +378,9 @@ if __name__ == "__main__":
         pooling=config["pooling"]
     ).to(device)
 
-    # train = AqSolDBDataset.from_deepchem("data/aqsoldb_train_s")
-    # validation = AqSolDBDataset.from_deepchem("data/aqsoldb_valid_s")
-    # test = AqSolDBDataset.from_deepchem("data/aqsoldb_test_s")
     train = torch.load("data/train.pt")
     validation = torch.load("data/valid.pt")
     test = torch.load("data/test.pt")
-    # print(len(train), len(validation), len(test))
     trainer = Trainer(
         model,
         train,
@@ -410,7 +388,7 @@ if __name__ == "__main__":
         device
     )
     validator = Validator(model,
-                          train,
+                          validation,
                           device)
     trainer.run(validator,
                 train,
