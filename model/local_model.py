@@ -84,7 +84,7 @@ def tune_hyperparameters(config=None):
                                 patience=25,
                                 log=False)
         log("Set losses[i]")
-        pred = model(seed).detach().cpu().numpy().flatten()[0]
+        pred = model(seed.to(device)).detach().cpu().numpy().flatten()[0]
         log("Got pred")
         label = seed.y.cpu().numpy()
         log("Got label")
