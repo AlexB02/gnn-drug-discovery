@@ -40,25 +40,26 @@ class AqSolModel(nn.Module):
             "GCN": GCNConv
         }[config["architecture"]]
 
-        hidden_channels = config["hidden_channels"]
-        hidden_layers = config["hidden_layers"]
+        self.conv_do_1 = nn.Dropout(p=config["conv_do_1"])
+        self.conv1 = self.arch(n_features, config["conv_hc_1"])
 
-        self.c_do_p = config["c_do_p"]
-        self.l_do_p = config["l_do_p"]
+        self.conv_do_2 = nn.Dropout(p=config["conv_do_2"])
+        self.conv2 = self.arch(config["conv_hc_1"], config["conv_hc_2"])
 
-        self.conv1 = self.arch(n_features, hidden_channels)
+        self.conv_do_3 = nn.Dropout(p=config["conv_do_3"])
+        self.conv3 = self.arch(config["conv_hc_2"], config["conv_hc_3"])
 
-        self.conv_layers = nn.ModuleList([
-            self.arch(hidden_channels,
-                      hidden_channels) for _ in range(hidden_layers)
-        ])
+        self.conv_do_4 = nn.Dropout(p=config["conv_do_4"])
+        self.conv4 = self.arch(config["conv_hc_3"], config["conv_hc_4"])
 
-        linear_layers = config["linear_layers"]
-        self.lin_layers = nn.ModuleList([
-            nn.Linear(hidden_channels,
-                      hidden_channels) for _ in range(linear_layers)
-        ])
-        self.lin = nn.Linear(hidden_channels, 1)
+        self.lin_do_1 = nn.Dropout(p=config["lin_do_1"])
+        self.lin1 = nn.Linear(config["conv_hc_4"], config["lin_n_1"])
+
+        self.lin_do_2 = nn.Dropout(p=config["lin_do_2"])
+        self.lin2 = nn.Linear(config["lin_n_1"], config["lin_n_2"])
+
+        self.lin_do_3 = nn.Dropout(p=config["lin_do_3"])
+        self.lin3 = nn.Linear(config["lin_n_2"], 1)
 
         self.pooling = {
             "mean": global_mean_pool,
@@ -73,21 +74,28 @@ class AqSolModel(nn.Module):
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
-        mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
+        mol_x = self.conv_do_1(mol_x)
         mol_x = self.conv1(mol_x, mol_edge_index).relu()
 
-        for conv_layer in self.conv_layers:
-            mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
-            mol_x = conv_layer(mol_x, mol_edge_index).relu()
+        mol_x = self.conv_do_2(mol_x)
+        mol_x = self.conv2(mol_x, mol_edge_index).relu()
+
+        mol_x = self.conv_do_3(mol_x)
+        mol_x = self.conv3(mol_x, mol_edge_index).relu()
+
+        mol_x = self.conv_do_4(mol_x)
+        mol_x = self.conv4(mol_x, mol_edge_index).relu()
 
         mol_x = self.pooling(mol_x, mol.batch)
 
-        for lin_layer in self.lin_layers:
-            mol_x = F.dropout(mol_x, training=self.training, p=self.l_do_p)
-            mol_x = lin_layer(mol_x).relu()
+        mol_x = self.lin_do_1(mol_x)
+        mol_x = self.lin1(mol_x).relu()
 
-        mol_x = F.dropout(mol_x, training=self.training, p=self.l_do_p)
-        mol_x = self.lin(mol_x)
+        mol_x = self.lin_do_2(mol_x)
+        mol_x = self.lin2(mol_x).relu()
+
+        mol_x = self.lin_do_3(mol_x)
+        mol_x = self.lin3(mol_x)
 
         return mol_x
 

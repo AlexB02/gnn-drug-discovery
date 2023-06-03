@@ -49,7 +49,7 @@ def global_hyperopt():
     wandb.login(key="f1c8bcb101a330b26b1259276de798892fbce6a0")
 
     sweep_config = {
-        "name": "All n-m",
+        "name": "Global 4-3",
         "method": "bayes",
         "metric": {
             "goal": "maximize",
@@ -71,28 +71,62 @@ def global_hyperopt():
                 "values": ["mean", "add"]
             },
             "architecture": {
-                "values": ["GCN", "GAT"]
+                "values": ["GCN"]
             },
             "patience": {
-                "values": [10, 20, 30]
+                "values": [30]
             },
-            "hidden_channels": {
+            "conv_hc_1": {
                 "min": 30,
                 "max": 500
             },
-            "hidden_layers": {
-                "values": [0, 1, 2, 3]
+            "conv_hc_2": {
+                "min": 30,
+                "max": 500
             },
-            "linear_layers": {
-                "values": [0, 1, 2, 3]
+            "conv_hc_3": {
+                "min": 30,
+                "max": 500
             },
-            "c_do_p": {
+            "conv_hc_4": {
+                "min": 30,
+                "max": 500
+            },
+            "conv_do_1": {
                 "min": float(0),
                 "max": float(1)
             },
-            "l_do_p": {
+            "conv_do_2": {
                 "min": float(0),
                 "max": float(1)
+            },
+            "conv_do_3": {
+                "min": float(0),
+                "max": float(1)
+            },
+            "conv_do_4": {
+                "min": float(0),
+                "max": float(1)
+            },
+            "lin_do_1": {
+                "min": float(0),
+                "max": float(1)
+            },
+            "lin_do_2": {
+                "min": float(0),
+                "max": float(1)
+            },
+            "lin_do_3": {
+                "min": float(0),
+                "max": float(1)
+            },
+            "lin_n_1": {
+                "min": 30,
+                "max": 500
+            },
+            "lin_n_2": {
+                "min": 30,
+                "max": 500
             }
         }
     }
