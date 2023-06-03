@@ -8,4 +8,4 @@ echo $CUDA_VISIBLE_DEVICES
 
 cd $HOME/gnn-drug-discovery/
 source activate gnndd-cuda
-WANDB__SERVICE_WAIT=300 CUDA_LAUNCH_BLOCKING=1 python model/hyperparameter_tuning.py
+WANDB__SERVICE_WAIT=300 CUDA_LAUNCH_BLOCKING=1 python main.py local_hyperopt

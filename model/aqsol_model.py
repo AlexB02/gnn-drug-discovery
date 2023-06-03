@@ -13,7 +13,7 @@ from numpy import std
 import wandb
 # from aqsol_dataset import AqSolDBDataset
 # import pickle
-from device import get_device
+from .device import get_device
 import numpy as np
 from torch_geometric.data import Data, Dataset
 
@@ -354,7 +354,7 @@ class SolubilityDataset(Dataset):
         return self.data[idx]
 
 
-if __name__ == "__main__":
+def global_training():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
         "batch_size": 64,

@@ -2,7 +2,7 @@ from torch_geometric.data import Data, Dataset
 from rdkit import DataStructs
 import numpy as np
 import torch
-from aqsol_model import LocalModel, Trainer, Validator, SolubilityDataset
+from .aqsol_model import LocalModel, Trainer, Validator, SolubilityDataset
 import wandb
 from sklearn.metrics import (
     mean_squared_error, explained_variance_score, mean_absolute_error)
@@ -105,8 +105,7 @@ def tune_hyperparameters(config=None):
     log("Wandb logged")
 
 
-if __name__ == "__main__":
-
+def local_hyperopt():
     sweep_config = {
         "name": "Local",
         "method": "bayes",
