@@ -68,7 +68,7 @@ def global_hyperopt():
                 "max": 1e-5
             },
             "pooling": {
-                "values": ["mean", "add"]
+                "values": ["add"]
             },
             "architecture": {
                 "values": ["GCN"]
@@ -77,56 +77,56 @@ def global_hyperopt():
                 "values": [30]
             },
             "conv_hc_1": {
-                "min": 30,
-                "max": 500
+                "min": 50,
+                "max": 150
             },
             "conv_hc_2": {
-                "min": 30,
-                "max": 500
+                "min": 100,
+                "max": 250
             },
             "conv_hc_3": {
-                "min": 30,
-                "max": 500
+                "min": 100,
+                "max": 250
             },
             "conv_hc_4": {
-                "min": 30,
-                "max": 500
+                "min": 50,
+                "max": 150
             },
             "conv_do_1": {
                 "min": float(0),
-                "max": float(1)
+                "max": float(0.2)
             },
             "conv_do_2": {
                 "min": float(0),
-                "max": float(1)
+                "max": float(0.2)
             },
             "conv_do_3": {
                 "min": float(0),
-                "max": float(1)
+                "max": float(0.2)
             },
             "conv_do_4": {
                 "min": float(0),
-                "max": float(1)
+                "max": float(0.2)
             },
             "lin_do_1": {
                 "min": float(0),
-                "max": float(1)
+                "max": float(0.5)
             },
             "lin_do_2": {
                 "min": float(0),
-                "max": float(1)
+                "max": float(0.5)
             },
             "lin_do_3": {
                 "min": float(0),
-                "max": float(1)
+                "max": float(0.5)
             },
             "lin_n_1": {
-                "min": 30,
-                "max": 500
+                "min": 50,
+                "max": 150
             },
             "lin_n_2": {
-                "min": 30,
-                "max": 500
+                "min": 50,
+                "max": 150
             }
         }
     }
@@ -159,6 +159,6 @@ def global_hyperopt():
         sweep_id,
         function=tune_hyperparameters,
         project="SolubilityPredictor",
-        count=30
+        count=420
     )
     wandb.finish()
