@@ -74,27 +74,25 @@ class AqSolModel(nn.Module):
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
-        mol_x = self.conv_do_1(mol_x)
         mol_x = self.conv1(mol_x, mol_edge_index).relu()
 
-        mol_x = self.conv_do_2(mol_x)
+        mol_x = self.conv_do_1(mol_x)
         mol_x = self.conv2(mol_x, mol_edge_index).relu()
 
-        mol_x = self.conv_do_3(mol_x)
+        mol_x = self.conv_do_2(mol_x)
         mol_x = self.conv3(mol_x, mol_edge_index).relu()
 
-        mol_x = self.conv_do_4(mol_x)
+        mol_x = self.conv_do_3(mol_x)
         mol_x = self.conv4(mol_x, mol_edge_index).relu()
 
         mol_x = self.pooling(mol_x, mol.batch)
 
-        mol_x = self.lin_do_1(mol_x)
         mol_x = self.lin1(mol_x).relu()
 
-        mol_x = self.lin_do_2(mol_x)
+        mol_x = self.lin_do_1(mol_x)
         mol_x = self.lin2(mol_x).relu()
 
-        mol_x = self.lin_do_3(mol_x)
+        mol_x = self.lin_do_2(mol_x)
         mol_x = self.lin3(mol_x)
 
         return mol_x

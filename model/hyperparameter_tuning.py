@@ -60,8 +60,8 @@ def global_hyperopt():
                 "values": [64]
             },
             "lr": {
-                "min": 1e-3,
-                "max": 1e-1
+                "min": 1e-4,
+                "max": 1e-2
             },
             "weight_decay": {
                 "min": 0.0,
@@ -81,11 +81,11 @@ def global_hyperopt():
                 "max": 150
             },
             "conv_hc_2": {
-                "min": 100,
+                "min": 150,
                 "max": 250
             },
             "conv_hc_3": {
-                "min": 100,
+                "min": 150,
                 "max": 250
             },
             "conv_hc_4": {
@@ -104,19 +104,11 @@ def global_hyperopt():
                 "min": float(0),
                 "max": float(0.2)
             },
-            "conv_do_4": {
-                "min": float(0),
-                "max": float(0.2)
-            },
             "lin_do_1": {
                 "min": float(0),
                 "max": float(0.5)
             },
             "lin_do_2": {
-                "min": float(0),
-                "max": float(0.5)
-            },
-            "lin_do_3": {
                 "min": float(0),
                 "max": float(0.5)
             },
