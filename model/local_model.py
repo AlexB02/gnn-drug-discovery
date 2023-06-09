@@ -12,6 +12,7 @@ from utils.log import log
 def generate_dataset(seed: Data,
                      top_n: int,
                      dataset: Dataset,
+                     thresh: float = 0,
                      similar: bool = True) -> Dataset:
     idxs = []
     if not similar:
@@ -19,8 +20,15 @@ def generate_dataset(seed: Data,
     else:
         seed_fp = seed.fingerprint
         dataset_fps = [x.fingerprint for x in dataset]
-        sims = DataStructs.BulkTanimotoSimilarity(seed_fp, dataset_fps)
-        idxs = np.argsort(sims)[-top_n:]
+        sims = np.array(DataStructs.BulkTanimotoSimilarity(seed_fp, dataset_fps))
+        print(type(sims))
+        above_threshold_idxs = np.where(sims > thresh)[0]
+        if len(above_threshold_idxs) >= top_n:
+            idxs = np.argsort(sims[above_threshold_idxs])[-top_n:]
+        else:
+            remaining = top_n - len(above_threshold_idxs)
+            random_idxs = np.random.randint(0, len(dataset), size=remaining)
+            idxs = np.concatenate([above_threshold_idxs, random_idxs])
     return dataset.index_select(idxs)
 
 
@@ -61,6 +69,7 @@ def tune_hyperparameters(config=None):
         temp: SolubilityDataset = generate_dataset(seed,
                                                    config["dataset_size"],
                                                    train,
+                                                   thresh=config["thresh"],
                                                    similar=config["tanimoto"])
         log("Generated temp dataset")
         temp_train, temp_validation = generate_train_valid(temp, 0.3)
@@ -154,10 +163,14 @@ def local_hyperopt():
             },
             "dataset_size": {
                 "min": 10,
-                "max": 1000
+                "max": 100
             },
             "tanimoto": {
-                "values": [True, False]
+                "values": [True]
+            },
+            "thresh": {
+                "min": float(0),
+                "max": float(1)
             }
         }
     }
@@ -169,6 +182,6 @@ def local_hyperopt():
         sweep_id,
         function=tune_hyperparameters,
         project="SolubilityPredictor",
-        count=100
+        count=2
     )
     wandb.finish()
