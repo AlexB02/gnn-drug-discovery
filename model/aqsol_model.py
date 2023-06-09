@@ -40,25 +40,23 @@ class AqSolModel(nn.Module):
             "GCN": GCNConv
         }[config["architecture"]]
 
-        self.conv_do_1 = nn.Dropout(p=config["conv_do_1"])
         self.conv1 = self.arch(n_features, config["conv_hc_1"])
 
-        self.conv_do_2 = nn.Dropout(p=config["conv_do_2"])
+        self.conv_do_1 = nn.Dropout(p=config["conv_do_1"])
         self.conv2 = self.arch(config["conv_hc_1"], config["conv_hc_2"])
-
-        self.conv_do_3 = nn.Dropout(p=config["conv_do_3"])
+        
+        self.conv_do_2 = nn.Dropout(p=config["conv_do_2"])
         self.conv3 = self.arch(config["conv_hc_2"], config["conv_hc_3"])
-
-        self.conv_do_4 = nn.Dropout(p=config["conv_do_4"])
+        
+        self.conv_do_3 = nn.Dropout(p=config["conv_do_3"])
         self.conv4 = self.arch(config["conv_hc_3"], config["conv_hc_4"])
 
-        self.lin_do_1 = nn.Dropout(p=config["lin_do_1"])
         self.lin1 = nn.Linear(config["conv_hc_4"], config["lin_n_1"])
-
-        self.lin_do_2 = nn.Dropout(p=config["lin_do_2"])
+        
+        self.lin_do_1 = nn.Dropout(p=config["lin_do_1"])
         self.lin2 = nn.Linear(config["lin_n_1"], config["lin_n_2"])
-
-        self.lin_do_3 = nn.Dropout(p=config["lin_do_3"])
+        
+        self.lin_do_2 = nn.Dropout(p=config["lin_do_2"])
         self.lin3 = nn.Linear(config["lin_n_2"], 1)
 
         self.pooling = {
