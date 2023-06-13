@@ -49,7 +49,7 @@ def global_hyperopt():
     wandb.login(key="f1c8bcb101a330b26b1259276de798892fbce6a0")
 
     sweep_config = {
-        "name": "Global 4-3",
+        "name": "Global 4-3 NO-Conv-DO",
         "method": "bayes",
         "metric": {
             "goal": "maximize",
@@ -57,10 +57,10 @@ def global_hyperopt():
         },
         "parameters": {
             "batch_size": {
-                "values": [64]
+                "values": [32, 64]
             },
             "lr": {
-                "min": 1e-4,
+                "min": 1e-5,
                 "max": 1e-2
             },
             "weight_decay": {
@@ -74,7 +74,7 @@ def global_hyperopt():
                 "values": ["GCN"]
             },
             "patience": {
-                "values": [30]
+                "values": [20, 30, 40, 50]
             },
             "conv_hc_1": {
                 "min": 50,
@@ -92,18 +92,6 @@ def global_hyperopt():
                 "min": 50,
                 "max": 150
             },
-            "conv_do_1": {
-                "min": float(0),
-                "max": float(0.2)
-            },
-            "conv_do_2": {
-                "min": float(0),
-                "max": float(0.2)
-            },
-            "conv_do_3": {
-                "min": float(0),
-                "max": float(0.2)
-            },
             "lin_do_1": {
                 "min": float(0),
                 "max": float(0.5)
@@ -114,11 +102,11 @@ def global_hyperopt():
             },
             "lin_n_1": {
                 "min": 50,
-                "max": 150
+                "max": 200
             },
             "lin_n_2": {
                 "min": 50,
-                "max": 150
+                "max": 200
             }
         }
     }

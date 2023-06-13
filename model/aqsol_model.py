@@ -41,14 +41,8 @@ class AqSolModel(nn.Module):
         }[config["architecture"]]
 
         self.conv1 = self.arch(n_features, config["conv_hc_1"])
-
-        self.conv_do_1 = nn.Dropout(p=config["conv_do_1"])
         self.conv2 = self.arch(config["conv_hc_1"], config["conv_hc_2"])
-        
-        self.conv_do_2 = nn.Dropout(p=config["conv_do_2"])
         self.conv3 = self.arch(config["conv_hc_2"], config["conv_hc_3"])
-        
-        self.conv_do_3 = nn.Dropout(p=config["conv_do_3"])
         self.conv4 = self.arch(config["conv_hc_3"], config["conv_hc_4"])
 
         self.lin1 = nn.Linear(config["conv_hc_4"], config["lin_n_1"])
@@ -73,14 +67,8 @@ class AqSolModel(nn.Module):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
         mol_x = self.conv1(mol_x, mol_edge_index).relu()
-
-        mol_x = self.conv_do_1(mol_x)
         mol_x = self.conv2(mol_x, mol_edge_index).relu()
-
-        mol_x = self.conv_do_2(mol_x)
         mol_x = self.conv3(mol_x, mol_edge_index).relu()
-
-        mol_x = self.conv_do_3(mol_x)
         mol_x = self.conv4(mol_x, mol_edge_index).relu()
 
         mol_x = self.pooling(mol_x, mol.batch)

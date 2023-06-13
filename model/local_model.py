@@ -182,6 +182,6 @@ def local_hyperopt():
         sweep_id,
         function=tune_hyperparameters,
         project="SolubilityPredictor",
-        count=2
+        count=100
     )
     wandb.finish()
