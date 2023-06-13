@@ -20,7 +20,8 @@ def generate_dataset(seed: Data,
     else:
         seed_fp = seed.fingerprint
         dataset_fps = [x.fingerprint for x in dataset]
-        sims = np.array(DataStructs.BulkTanimotoSimilarity(seed_fp, dataset_fps))
+        sims = np.array(DataStructs.BulkTanimotoSimilarity(seed_fp,
+                                                           dataset_fps))
         print(type(sims))
         above_threshold_idxs = np.where(sims > thresh)[0]
         if len(above_threshold_idxs) >= top_n:
@@ -116,7 +117,7 @@ def tune_hyperparameters(config=None):
 
 def local_hyperopt():
     sweep_config = {
-        "name": "Local",
+        "name": "Local No-Conv-DO",
         "method": "bayes",
         "metric": {
             "goal": "maximize",
@@ -124,10 +125,10 @@ def local_hyperopt():
         },
         "parameters": {
             "batch_size": {
-                "values": [64]
+                "values": [16, 32, 64]
             },
             "lr": {
-                "min": 1e-3,
+                "min": 1e-5,
                 "max": 1e-1
             },
             "weight_decay": {
@@ -153,17 +154,13 @@ def local_hyperopt():
             "linear_layers": {
                 "values": [0, 1]
             },
-            "c_do_p": {
-                "min": float(0),
-                "max": 0.5
-            },
             "l_do_p": {
                 "min": float(0),
                 "max": float(1)
             },
             "dataset_size": {
-                "min": 10,
-                "max": 100
+                "min": 3,
+                "max": 15
             },
             "tanimoto": {
                 "values": [True]

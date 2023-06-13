@@ -46,10 +46,10 @@ class AqSolModel(nn.Module):
         self.conv4 = self.arch(config["conv_hc_3"], config["conv_hc_4"])
 
         self.lin1 = nn.Linear(config["conv_hc_4"], config["lin_n_1"])
-        
+
         self.lin_do_1 = nn.Dropout(p=config["lin_do_1"])
         self.lin2 = nn.Linear(config["lin_n_1"], config["lin_n_2"])
-        
+
         self.lin_do_2 = nn.Dropout(p=config["lin_do_2"])
         self.lin3 = nn.Linear(config["lin_n_2"], 1)
 
@@ -109,7 +109,6 @@ class LocalModel(nn.Module):
         hidden_channels = config["hidden_channels"]
         hidden_layers = config["hidden_layers"]
 
-        self.c_do_p = config["c_do_p"]
         self.l_do_p = config["l_do_p"]
 
         self.conv1 = self.arch(n_features, hidden_channels)
@@ -139,11 +138,9 @@ class LocalModel(nn.Module):
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
-        mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
         mol_x = self.conv1(mol_x, mol_edge_index).relu()
 
         for conv_layer in self.conv_layers:
-            mol_x = F.dropout(mol_x, training=self.training, p=self.c_do_p)
             mol_x = conv_layer(mol_x, mol_edge_index).relu()
 
         mol_x = self.pooling(mol_x, mol.batch)
