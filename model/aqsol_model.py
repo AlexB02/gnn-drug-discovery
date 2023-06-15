@@ -17,6 +17,7 @@ from .device import get_device
 import numpy as np
 from torch_geometric.data import Dataset
 from deepchem.feat import MolGraphConvFeaturizer
+from utils.log import log
 
 
 def calculate_wmse(mse, std_diff) -> float:
@@ -324,6 +325,11 @@ class Trainer:
             std_diffs[fold] = validation["std_diff"]
             evss[fold] = validation["evs"]
             epochs[fold] = num_epochs
+            log(str(evss))
+            log(str(mses))
+            log(str(maes))
+            log(str(std_diffs))
+            log(str(epochs))
         wandb.run = wandb_run
         wandb.log({
             "evs": evss.mean(),
@@ -370,19 +376,22 @@ def global_training():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
         "batch_size": 64,
-        "lr": 0.00001979,
-        "weight_decay": 0.000007546,
+        "lr": 0.0001205,
+        "weight_decay": 0.000003436,
         "pooling": "add",
         "architecture": "GCN",
-        "patience": 50,
-        "conv_hc_1": 150,
-        "conv_hc_2": 154,
-        "conv_hc_3": 153,
-        "conv_hc_4": 145,
-        "lin_do_1": 0.06745,
-        "lin_do_2": 0.3374,
-        "lin_n_1": 126,
-        "lin_n_2": 93,
+        "patience": 30,
+        "conv_hc_1": 56,
+        "conv_hc_2": 234,
+        "conv_hc_3": 196,
+        "conv_hc_4": 128,
+        "conv_do_1": 0.02532,
+        "conv_do_2": 0.09677,
+        "conv_do_3": 0.02618,
+        "lin_do_1": 0.03072,
+        "lin_do_2": 0.1516,
+        "lin_n_1": 101,
+        "lin_n_2": 123,
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
@@ -396,9 +405,11 @@ def global_training():
     train = torch.load("data/train.pt")
     validation = torch.load("data/valid.pt")
     test = torch.load("data/test.pt")
+    train_valid = SolubilityDatasets((train, validation))
+    print("Dataset: " + str(train_valid.len()))
     trainer = Trainer(
         model,
-        train,
+        train_valid,
         config["batch_size"],
         device
     )
