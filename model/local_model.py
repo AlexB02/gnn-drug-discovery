@@ -92,12 +92,12 @@ def tune_hyperparameters(config=None):
                               temp_validation,
                               device)
         log("Created validator")
-        losses[i] = trainer.run(validator,
-                                train,
-                                model,
-                                # wandb_run,
-                                patience=25,
-                                log=False)
+        losses[i], _ = trainer.run(validator,
+                                   train,
+                                   model,
+                                   # wandb_run,
+                                   patience=25,
+                                   log=False)
         log("Set losses[i]")
         pred = model(seed.to(device)).detach().cpu().numpy().flatten()[0]
         log("Got pred")

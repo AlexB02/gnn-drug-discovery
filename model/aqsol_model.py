@@ -288,7 +288,7 @@ class Trainer:
                 not_improved_counter = 0
             else:
                 not_improved_counter += 1
-        return epoch_loss
+        return epoch_loss, epoch_counter
 
     def run_cross_validation(self, model_class, wandb_run, model_config,
                              patience, model_kwargs={}):
@@ -299,6 +299,7 @@ class Trainer:
         maes = np.zeros(n_folds)
         std_diffs = np.zeros(n_folds)
         evss = np.zeros(n_folds)
+        epochs = np.zeros(n_folds)
         for fold, (train_index, val_index) in enumerate(
                 skf.split(range(len(self.dataset)))):
             print(f"Fold {fold}")
@@ -309,7 +310,7 @@ class Trainer:
                                      model_config,
                                      **model_kwargs).to(device)
             fold_validator = Validator(fold_model, validation_dataset, device)
-            loss = self.run(
+            loss, num_epochs = self.run(
                 fold_validator,
                 train_dataset,
                 fold_model,
@@ -322,6 +323,7 @@ class Trainer:
             maes[fold] = validation["mae"]
             std_diffs[fold] = validation["std_diff"]
             evss[fold] = validation["evs"]
+            epochs[fold] = num_epochs
         wandb.run = wandb_run
         wandb.log({
             "evs": evss.mean(),
@@ -331,7 +333,8 @@ class Trainer:
             "std_diff": std_diffs.mean(),
             "wmse": calculate_wmse(
                 mses.mean(), std_diffs.mean()
-            )
+            ),
+            "epoch": epochs.mean()
         })
 
 
@@ -341,6 +344,7 @@ class SolubilityDatasets(Dataset):
         super(SolubilityDatasets, self).__init__()
         self.data = []
         for dataset in datasets:
+            print(dataset)
             for elem in dataset:
                 self.data.append(elem)
 
