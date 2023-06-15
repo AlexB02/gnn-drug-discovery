@@ -306,7 +306,7 @@ class Trainer:
             print(f"Fold {fold}")
             train_dataset = self.dataset.index_select(train_index)
             validation_dataset = self.dataset.index_select(val_index)
-            print(type(validation_dataset))
+            print(len(train_dataset), len(validation_dataset))
             fold_model = model_class(30,
                                      model_config,
                                      **model_kwargs).to(device)
@@ -469,7 +469,13 @@ def global_cross_validation():
         config["batch_size"],
         device
     )
+    model_kwargs = {
+        "lr": config["lr"],
+        "weight_decay": config["weight_decay"],
+        "pooling": config["pooling"]
+    }
     trainer.run_cross_validation(AqSolModel,
                                  wandb_run,
                                  config,
-                                 patience=config["patience"])
+                                 patience=config["patience"],
+                                 model_kwargs=model_kwargs)
