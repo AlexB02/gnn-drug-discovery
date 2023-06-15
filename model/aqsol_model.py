@@ -12,10 +12,11 @@ from sklearn.model_selection import KFold
 from numpy import std
 import wandb
 # from aqsol_dataset import AqSolDBDataset
-# import pickle
+import pickle
 from .device import get_device
 import numpy as np
-from torch_geometric.data import Data, Dataset
+from torch_geometric.data import Dataset
+from deepchem.feat import MolGraphConvFeaturizer
 
 
 def calculate_wmse(mse, std_diff) -> float:
@@ -41,16 +42,22 @@ class AqSolModel(nn.Module):
         }[config["architecture"]]
 
         self.conv1 = self.arch(n_features, config["conv_hc_1"])
+        self.conv_do_1 = nn.Dropout(p=config["conv_do_1"])
+
         self.conv2 = self.arch(config["conv_hc_1"], config["conv_hc_2"])
+        self.conv_do_2 = nn.Dropout(p=config["conv_do_2"])
+
         self.conv3 = self.arch(config["conv_hc_2"], config["conv_hc_3"])
+        self.conv_do_3 = nn.Dropout(p=config["conv_do_3"])
+
         self.conv4 = self.arch(config["conv_hc_3"], config["conv_hc_4"])
 
         self.lin1 = nn.Linear(config["conv_hc_4"], config["lin_n_1"])
-
         self.lin_do_1 = nn.Dropout(p=config["lin_do_1"])
-        self.lin2 = nn.Linear(config["lin_n_1"], config["lin_n_2"])
 
+        self.lin2 = nn.Linear(config["lin_n_1"], config["lin_n_2"])
         self.lin_do_2 = nn.Dropout(p=config["lin_do_2"])
+
         self.lin3 = nn.Linear(config["lin_n_2"], 1)
 
         self.pooling = {
@@ -67,8 +74,14 @@ class AqSolModel(nn.Module):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
         mol_x = self.conv1(mol_x, mol_edge_index).relu()
+        mol_x = self.conv_do_1(mol_x)
+
         mol_x = self.conv2(mol_x, mol_edge_index).relu()
+        mol_x = self.conv_do_2(mol_x)
+
         mol_x = self.conv3(mol_x, mol_edge_index).relu()
+        mol_x = self.conv_do_3(mol_x)
+
         mol_x = self.conv4(mol_x, mol_edge_index).relu()
 
         mol_x = self.pooling(mol_x, mol.batch)
@@ -138,10 +151,10 @@ class LocalModel(nn.Module):
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
-        mol_x = self.conv1(mol_x, mol_edge_index).relu()
+        mol_x = self.conv1(mol_x, mol_edge_index).sigmoid()
 
         for conv_layer in self.conv_layers:
-            mol_x = conv_layer(mol_x, mol_edge_index).relu()
+            mol_x = conv_layer(mol_x, mol_edge_index).sigmoid()
 
         mol_x = self.pooling(mol_x, mol.batch)
 
@@ -278,7 +291,7 @@ class Trainer:
         return epoch_loss
 
     def run_cross_validation(self, model_class, wandb_run, model_config,
-                             model_kwargs, patience):
+                             patience, model_kwargs={}):
         n_folds = 5
         skf = KFold(n_splits=n_folds, shuffle=True)
         device = get_device()
@@ -322,19 +335,14 @@ class Trainer:
         })
 
 
-class SolubilityDataset(Dataset):
+class SolubilityDatasets(Dataset):
 
-    def __init__(self, mols, sols):
-        super(SolubilityDataset, self).__init__()
+    def __init__(self, datasets):
+        super(SolubilityDatasets, self).__init__()
         self.data = []
-        for mol, logs in zip(mols, sols):
-            x = torch.tensor(mol.node_features)
-            edge_index = torch.tensor(mol.edge_index)
-            y = torch.tensor(logs)
-
-            self.data.append(
-                Data(x=x, edge_index=edge_index, y=y)
-            )
+        for dataset in datasets:
+            for elem in dataset:
+                self.data.append(elem)
 
     def len(self):
         return len(self.data)
@@ -343,20 +351,34 @@ class SolubilityDataset(Dataset):
         return self.data[idx]
 
 
+def handle_global_predict(smiles):
+    global_model = None
+    with open("model/global_model", "rb") as f:
+        global_model = pickle.load(f)
+    featurizer = MolGraphConvFeaturizer(use_edges=True)
+    mol = featurizer.featurize(smiles)[0]
+    del mol.kwargs['pos']
+    pred = global_model.predict(mol.to_pyg_graph())[0]
+    return pred
+
+
 def global_training():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
         "batch_size": 64,
-        "lr": 0.001555,
-        "weight_decay": 0.000008057,
+        "lr": 0.00001979,
+        "weight_decay": 0.000007546,
         "pooling": "add",
         "architecture": "GCN",
-        "patience": 30,
-        "hidden_channels": 165,
-        "hidden_layers": 3,
-        "linear_layers": 2,
-        "c_do_p": 0.01287,
-        "l_do_p": 0.03007
+        "patience": 50,
+        "conv_hc_1": 150,
+        "conv_hc_2": 154,
+        "conv_hc_3": 153,
+        "conv_hc_4": 145,
+        "lin_do_1": 0.06745,
+        "lin_do_2": 0.3374,
+        "lin_n_1": 126,
+        "lin_n_2": 93,
     }
     wandb_run = wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
@@ -383,9 +405,56 @@ def global_training():
                 train,
                 model,
                 wandb_run,
-                patience=25)
+                patience=config["patience"])
 
     test_validator = Validator(model, test, device)
     wandb.log(test_validator.validate())
-    # with open("model/small_trained_model", "wb") as f:
-    #     pickle.dump(model, f)
+    with open("model/global_model", "wb") as f:
+        pickle.dump(model, f)
+
+
+def global_cross_validation():
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    config = {
+        "batch_size": 64,
+        "lr": 0.0001205,
+        "weight_decay": 0.000003436,
+        "pooling": "add",
+        "architecture": "GCN",
+        "patience": 30,
+        "conv_hc_1": 56,
+        "conv_hc_2": 234,
+        "conv_hc_3": 196,
+        "conv_hc_4": 128,
+        "conv_do_1": 0.02532,
+        "conv_do_2": 0.09677,
+        "conv_do_3": 0.02618,
+        "lin_do_1": 0.03072,
+        "lin_do_2": 0.1516,
+        "lin_n_1": 101,
+        "lin_n_2": 123,
+    }
+    wandb_run = wandb.init(config=config, project="SolubilityPredictor")
+    model = AqSolModel(
+        30,
+        config,
+        lr=config["lr"],
+        weight_decay=config["weight_decay"],
+        pooling=config["pooling"]
+    ).to(device)
+
+    train = torch.load("data/train.pt")
+    valid = torch.load("data/valid.pt")
+    # test = torch.load("data/test.pt")
+    train_valid = SolubilityDatasets((train, valid))
+    print("Dataset: " + str(train_valid.len()))
+    trainer = Trainer(
+        model,
+        train_valid,
+        config["batch_size"],
+        device
+    )
+    trainer.run_cross_validation(AqSolModel,
+                                 wandb_run,
+                                 config,
+                                 patience=config["patience"])

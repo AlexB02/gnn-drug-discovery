@@ -2,7 +2,8 @@ from torch_geometric.data import Data, Dataset
 from rdkit import DataStructs
 import numpy as np
 import torch
-from .aqsol_model import LocalModel, Trainer, Validator, SolubilityDataset
+from .aqsol_model import LocalModel, Trainer, Validator
+from pre_processor.aqsol_preprocessor import SolubilityDataset
 import wandb
 from sklearn.metrics import (
     mean_squared_error, explained_variance_score, mean_absolute_error)
@@ -40,6 +41,10 @@ def generate_train_valid(dataset: Dataset, split: float) -> tuple:
     split = int((1 - split) * n)
     train, validation = np.split(indices, [split])
     return dataset.index_select(train), dataset.index_select(validation)
+
+
+def create_local_model(smiles: str, model_loc: str):
+    pass
 
 
 def tune_hyperparameters(config=None):
