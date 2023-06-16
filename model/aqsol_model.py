@@ -248,6 +248,13 @@ class Trainer:
         )
         return sum(epoch_losses) / len(epoch_losses), epoch_evs
 
+    def train_n_epochs(self, train_dataset, model, n_epochs) -> np.ndarray:
+        epoch_losses = np.zeros(n_epochs)
+        for epoch in range(n_epochs):
+            epoch_loss, _evs = self.train_one_epoch(train_dataset, model)
+            epoch_losses[epoch] = epoch_loss
+        return epoch_losses
+
     def run(
         self,
         validator,
@@ -368,7 +375,9 @@ def handle_global_predict(smiles):
     featurizer = MolGraphConvFeaturizer(use_edges=True)
     mol = featurizer.featurize(smiles)[0]
     del mol.kwargs['pos']
-    pred = global_model.predict(mol.to_pyg_graph())[0]
+    pred = global_model.predict(mol.to_pyg_graph(),
+                                min=-13.1719,
+                                max=2.1376816201)[0]
     return pred
 
 
@@ -376,24 +385,24 @@ def global_training():
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = {
         "batch_size": 64,
-        "lr": 0.00011501144244947068,
-        "weight_decay": 0.00000255332643509084,
+        "lr": 0.00013850654318564852,
+        "weight_decay": 0.00000720831334769755,
         "pooling": "add",
         "architecture": "GCN",
         "patience": 30,
-        "conv_hc_1": 112,
-        "conv_hc_2": 227,
-        "conv_hc_3": 293,
-        "conv_hc_4": 124,
-        "conv_do_1": 0.04364676849680085,
-        "conv_do_2": 0.08534554786989682,
-        "conv_do_3": 0.13460148982514963,
-        "lin_do_1": 0.08897599454858574,
-        "lin_do_2": 0.2072705309802831,
-        "lin_n_1": 98,
-        "lin_n_2": 116,
+        "conv_hc_1": 69,
+        "conv_hc_2": 208,
+        "conv_hc_3": 158,
+        "conv_hc_4": 122,
+        "conv_do_1": 0.012940682270939608,
+        "conv_do_2": 0.1536591043086343,
+        "conv_do_3": 0.1619722720722499,
+        "lin_do_1": 0.20680253869050996,
+        "lin_do_2": 0.0858066355023579,
+        "lin_n_1": 112,
+        "lin_n_2": 71,
     }
-    wandb_run = wandb.init(config=config, project="SolubilityPredictor")
+    wandb.init(config=config, project="SolubilityPredictor")
     model = AqSolModel(
         30,
         config,
@@ -413,14 +422,7 @@ def global_training():
         config["batch_size"],
         device
     )
-    validator = Validator(model,
-                          validation,
-                          device)
-    trainer.run(validator,
-                train,
-                model,
-                wandb_run,
-                patience=config["patience"])
+    trainer.train_n_epochs(train_valid, model, 181)
 
     test_validator = Validator(model, test, device)
     wandb.log(test_validator.validate())
