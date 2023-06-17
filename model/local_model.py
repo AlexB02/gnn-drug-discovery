@@ -11,6 +11,7 @@ from utils.log import log
 from deepchem.feat import MolGraphConvFeaturizer
 from rdkit import Chem
 from rdkit.Chem import AllChem
+from scipy.stats import pearsonr
 
 
 def generate_dataset(seed: Data,
@@ -21,6 +22,7 @@ def generate_dataset(seed: Data,
     idxs = []
     if not similar:
         idxs = [x for x in np.random.randint(0, len(dataset), size=top_n)]
+        return dataset.index_select(idxs), []
     else:
         seed_fp = seed.fingerprint
         dataset_fps = [x.fingerprint for x in dataset]
@@ -34,7 +36,7 @@ def generate_dataset(seed: Data,
         #     remaining = top_n - len(above_threshold_idxs)
         #     random_idxs = np.random.randint(0, len(dataset), size=remaining)
         #     idxs = np.concatenate([above_threshold_idxs, random_idxs])
-    return dataset.index_select(idxs)
+        return dataset.index_select(idxs), sims[idxs]
 
 
 def generate_train_valid(dataset: Dataset, split: float) -> tuple:
@@ -85,11 +87,11 @@ def create_local_model(smiles: str, model_loc: str):
                        weight_decay=config["weight_decay"],
                        pooling=config["pooling"]).to(device)
 
-    temp: SolubilityDataset = generate_dataset(seed,
-                                               config["dataset_size"],
-                                               train,
-                                               thresh=config["thresh"],
-                                               similar=config["tanimoto"])
+    temp, sims = generate_dataset(seed,
+                                  config["dataset_size"],
+                                  train,
+                                  thresh=config["thresh"],
+                                  similar=config["tanimoto"])
     temp_train, temp_validation = generate_train_valid(temp, 0.3)
 
     trainer = Trainer(
@@ -105,7 +107,7 @@ def create_local_model(smiles: str, model_loc: str):
                           train,
                           model,
                           # wandb_run,
-                          patience=10,
+                          patience=25,
                           log=False)
     torch.save(model, model_loc)
     return model
@@ -124,7 +126,7 @@ def tune_hyperparameters(config=None):
     wandb.init(config=config)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = wandb.config
-    tests = 20
+    tests = 10
     preds = np.zeros(tests)
     labels = np.zeros(tests)
     losses = np.zeros(tests)
@@ -145,11 +147,11 @@ def tune_hyperparameters(config=None):
         ).to(device)
         log("Created local model")
 
-        temp: SolubilityDataset = generate_dataset(seed,
-                                                   config["dataset_size"],
-                                                   train,
-                                                   thresh=config["thresh"],
-                                                   similar=config["tanimoto"])
+        temp, sims = generate_dataset(seed,
+                                      config["dataset_size"],
+                                      train,
+                                      thresh=config["thresh"],
+                                      similar=config["tanimoto"])
         log("Generated temp dataset")
         temp_train, temp_validation = generate_train_valid(temp, 0.3)
         log("Generated train and valid datasets")
@@ -199,10 +201,14 @@ def local_test(config=None):
     wandb.init(config=config)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     config = wandb.config
-    tests = 20
+    tests = 50
     preds = np.zeros(tests)
     labels = np.zeros(tests)
     losses = np.zeros(tests)
+    squared_errors = np.zeros(tests)
+    max_sims = np.zeros(tests)
+    min_sims = np.zeros(tests)
+    mean_sims = np.zeros(tests)
 
     train: SolubilityDataset = torch.load("data/train.pt")
     validation: SolubilityDataset = torch.load("data/valid.pt")
@@ -222,11 +228,17 @@ def local_test(config=None):
         ).to(device)
         log("Created local model")
 
-        temp: SolubilityDataset = generate_dataset(seed,
-                                                   config["dataset_size"],
-                                                   train_valid,
-                                                   thresh=config["thresh"],
-                                                   similar=config["tanimoto"])
+        temp, sims = generate_dataset(seed,
+                                      config["dataset_size"],
+                                      train_valid,
+                                      thresh=config["thresh"],
+                                      similar=config["tanimoto"])
+        max_sims[i] = sims.max()
+        min_sims[i] = sims.min()
+        mean_sims[i] = sims.mean()
+        log(max_sims[i])
+        log(min_sims[i])
+        log(mean_sims[i])
         log("Generated temp dataset")
         temp_train, temp_validation = generate_train_valid(temp, 0.3)
         log("Generated train and valid datasets")
@@ -248,19 +260,17 @@ def local_test(config=None):
                                    # wandb_run,
                                    patience=25,
                                    log=False)
-        log("Set losses[i]")
         pred = model(seed.to(device)).detach().cpu().numpy().flatten()[0]
-        log("Got pred")
         label = seed.y.cpu().numpy()
-        log("Got label")
+        squared_errors[i] = (pred - label)**2
         preds[i] = pred
-        log("Set pred")
         labels[i] = label
-        log("Set label")
-        print(i, (pred - label) ** 2)
-        log("Calculated and printed")
-        log("\"" + str(preds) + "\"")
-        log("\"" + str(labels) + "\"")
+        log(str(i) + " " + str((pred - label) ** 2))
+        log(str(preds))
+        log(str(labels))
+        log(str(pearsonr(max_sims, squared_errors)))
+        log(str(pearsonr(min_sims, squared_errors)))
+        log(str(pearsonr(mean_sims, squared_errors)))
 
     wandb.log(
         {

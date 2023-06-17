@@ -1,4 +1,4 @@
-from model.local_model import local_hyperopt, local_predict, tune_hyperparameters
+from model.local_model import local_hyperopt, local_predict, local_test
 # flake8: noqa
 from model.aqsol_model import global_training, handle_global_predict, global_cross_validation
 from pre_processor.aqsol_preprocessor import SolubilityDataset
@@ -16,11 +16,10 @@ def handle_global_training():
 
 def handle_global_hyperopt():
     global_hyperopt()
-    
+
 
 def handle_global_cv():
     global_cross_validation()
-    
 
 def handle_local_predict(smiles):
     local_predict(smiles)
@@ -42,7 +41,7 @@ def handle_local_testing():
         "thresh": 0.8063,
         "weight_decay": 0.00000891
     }
-    tune_hyperparameters(config)
+    local_test(config)
 
 
 if __name__ == "__main__":
