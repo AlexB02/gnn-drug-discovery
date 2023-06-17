@@ -152,10 +152,10 @@ class LocalModel(nn.Module):
     def forward(self, mol):
         mol_x, mol_edge_index = mol.x, mol.edge_index
 
-        mol_x = self.conv1(mol_x, mol_edge_index).sigmoid()
+        mol_x = self.conv1(mol_x, mol_edge_index).relu()
 
         for conv_layer in self.conv_layers:
-            mol_x = conv_layer(mol_x, mol_edge_index).sigmoid()
+            mol_x = conv_layer(mol_x, mol_edge_index).relu()
 
         mol_x = self.pooling(mol_x, mol.batch)
 
