@@ -2,6 +2,7 @@ from torch_geometric.data import Data, Dataset
 from rdkit import DataStructs
 import numpy as np
 import torch
+from tqdm import tqdm
 from .aqsol_model import LocalModel, Trainer, Validator, SolubilityDatasets
 from pre_processor.aqsol_preprocessor import SolubilityDataset
 import wandb
@@ -29,13 +30,6 @@ def generate_dataset(seed: Data,
         sims = np.array(DataStructs.BulkTanimotoSimilarity(seed_fp,
                                                            dataset_fps))
         idxs = np.argsort(sims)[-top_n:]
-        # above_threshold_idxs = np.where(sims > thresh)[0]
-        # if len(above_threshold_idxs) >= top_n:
-        #     idxs = np.argsort(sims[above_threshold_idxs])[-top_n:]
-        # else:
-        #     remaining = top_n - len(above_threshold_idxs)
-        #     random_idxs = np.random.randint(0, len(dataset), size=remaining)
-        #     idxs = np.concatenate([above_threshold_idxs, random_idxs])
         return dataset.index_select(idxs), sims[idxs]
 
 
@@ -48,7 +42,15 @@ def generate_train_valid(dataset: Dataset, split: float) -> tuple:
     return dataset.index_select(train), dataset.index_select(validation)
 
 
+def update_tracker(tracker, progress, message):
+    tracker.set_description(message)
+    tracker.update(progress - tracker.n)
+
+
 def create_local_model(smiles: str, model_loc: str):
+    tracker = tqdm(total=100,
+                   bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
+    update_tracker(tracker, 0, "Loading global dataset")
     config = {
         "architecture": "GAT",
         "batch_size": 64,
@@ -65,13 +67,11 @@ def create_local_model(smiles: str, model_loc: str):
         "weight_decay": 0.00000891
     }
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
     train: SolubilityDataset = torch.load("data/train.pt")
-    log("Created datasets")
+    update_tracker(tracker, 20, "Featurizing SMILES")
     feat = MolGraphConvFeaturizer()
     mol = feat(smiles)[0]
     del mol.kwargs['pos']
-    # mol = mol.to_pyg_graph()
 
     x = torch.tensor(mol.node_features).float()
     edge_index = torch.tensor(mol.edge_index)
@@ -81,12 +81,15 @@ def create_local_model(smiles: str, model_loc: str):
                 edge_index=edge_index,
                 smiles=smiles,
                 fingerprint=fingerprint)
+    update_tracker(tracker, 40, "Creating local model")
     model = LocalModel(30,
                        config,
                        lr=config["lr"],
                        weight_decay=config["weight_decay"],
                        pooling=config["pooling"]).to(device)
+    update_tracker(tracker, 50, "Generating local dataset")
 
+    update_tracker(tracker, 60, "Generating train-validation split")
     temp, sims = generate_dataset(seed,
                                   config["dataset_size"],
                                   train,
@@ -94,22 +97,27 @@ def create_local_model(smiles: str, model_loc: str):
                                   similar=config["tanimoto"])
     temp_train, temp_validation = generate_train_valid(temp, 0.3)
 
+    update_tracker(tracker, 70, "Creating trainer")
     trainer = Trainer(
         model,
         temp_train,
         config["batch_size"],
         device
     )
+    update_tracker(tracker, 80, "Creating validator")
     validator = Validator(model,
                           temp_validation,
                           device)
+    update_tracker(tracker, 90, "Training model")
     loss, _ = trainer.run(validator,
                           train,
                           model,
                           # wandb_run,
                           patience=25,
                           log=False)
+    update_tracker(tracker, 95, "Saving model")
     torch.save(model, model_loc)
+    update_tracker(tracker, 100, "Complete")
     return model
 
 
@@ -119,7 +127,7 @@ def local_predict(smiles):
     del mol.kwargs['pos']
     mol = mol.to_pyg_graph()
     pred = model.predict(mol, min=-13.1719, max=2.1376816201)[0]
-    print(pred)
+    return pred
 
 
 def tune_hyperparameters(config=None):

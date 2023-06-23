@@ -22,7 +22,7 @@ def handle_global_cv():
     global_cross_validation()
 
 def handle_local_predict(smiles):
-    local_predict(smiles)
+    return local_predict(smiles)
 
 
 def handle_local_testing():
